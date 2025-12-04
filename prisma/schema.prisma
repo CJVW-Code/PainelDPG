@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+model Project {
+  id          String         @id @default(uuid())
+  name        String
+  description String
+  area        String
+  status      String
+  progress    Int
+  startDate   DateTime
+  endDate     DateTime
+  priority    String
+  featured    Boolean        @default(false)
+  image       String?
+  visibility  ProjectVisibility @default(PUBLIC)
+  team        ProjectMember[]
+  accessRules ProjectAccessRule[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model User {
+  id         String       @id @default(uuid())
+  name       String
+  email      String       @unique
+  avatar     String?
+  roles      UserRole[]
+  permissions ProjectAccessRule[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  level       Int          @default(0)
+  users       UserRole[]
+  permissions ProjectAccessRule[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model UserRole {
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId   String
+  assignedAt DateTime @default(now())
+
+  @@id([userId, roleId])
+}
+
+model ProjectAccessRule {
+  id         String   @id @default(uuid())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId  String
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String?
+  role       Role?    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId     String?
+  canView    Boolean  @default(true)
+  canEdit    Boolean  @default(false)
+  canManage  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model TeamMember {
+  id        String           @id @default(uuid())
+  name      String
+  role      String
+  avatar    String?
+  projects  ProjectMember[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model ProjectMember {
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  teamMember  TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  teamMemberId String
+
+  @@id([projectId, teamMemberId])
+}
+
+enum ProjectVisibility {
+  PUBLIC
+  RESTRICTED
+}
