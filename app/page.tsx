@@ -7,6 +7,7 @@ import { BentoGrid } from "@/components/projetos/bento-grid"
 import { ProjectModal } from "@/components/projetos/project-modal"
 import { TimelineView } from "@/components/timeline/timeline-view"
 import { PresentationMode, PresentationModeButton } from "@/components/presentation-mode"
+import { UserMenu } from "@/components/auth/user-menu"
 import { useProjects } from "@/hooks/use-projects"
 import type { Project, AreaInteresse } from "@/lib/types"
 
@@ -41,6 +42,9 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-background">
+      <div className="flex justify-end px-6 py-4">
+        <UserMenu />
+      </div>
       <AnimatePresence mode="wait">
         {currentView === "radar" ? (
           <motion.div key="radar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

@@ -1,0 +1,2 @@
+ALTER TABLE "Project"
+ADD COLUMN "createdById" TEXT REFERENCES "User"("id") ON DELETE SET NULL;

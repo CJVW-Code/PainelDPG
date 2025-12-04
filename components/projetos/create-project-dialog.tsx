@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 type FormValues = CreateProjectSchema
 
@@ -52,6 +53,8 @@ interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreateProjectDialogProps) {
   const [open, setOpen] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const form = useForm<FormValues>({
     resolver: zodResolver(createProjectSchema),
     defaultValues: {
@@ -64,7 +67,7 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       visibility: "public",
       featured: false,
-      image: "",
+      image: undefined,
     },
   })
 
@@ -73,6 +76,14 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
       form.setValue("area", defaultArea)
     }
   }, [defaultArea, form])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [previewUrl])
 
   const selectedArea = form.watch("area")
 
@@ -83,12 +94,35 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
 
   async function onSubmit(values: FormValues) {
     try {
+      let uploadedImageUrl = values.image
+
+      if (imageFile) {
+        const formData = new FormData()
+        formData.append("file", imageFile)
+
+        const uploadResponse = await fetch("/api/uploads", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!uploadResponse.ok) {
+          const payload = await uploadResponse.json().catch(() => ({}))
+          throw new Error(payload.error ?? "Falha ao enviar a imagem.")
+        }
+
+        const { url } = (await uploadResponse.json()) as { url: string }
+        uploadedImageUrl = url
+      }
+
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          image: uploadedImageUrl,
+        }),
       })
 
       if (!response.ok) {
@@ -97,7 +131,18 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
       }
 
       toast.success("Projeto criado com sucesso!")
-      form.reset()
+      form.reset({
+        ...form.getValues(),
+        name: "",
+        description: "",
+        featured: false,
+        image: undefined,
+      })
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+      setImageFile(null)
+      setPreviewUrl(null)
       setOpen(false)
       onCreated?.()
     } catch (error) {
@@ -107,17 +152,26 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => {
-      setOpen(next)
-      if (!next) {
-        form.reset({
-          ...form.getValues(),
-          name: "",
-          description: "",
-          featured: false,
-        })
-      }
-    }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          form.reset({
+            ...form.getValues(),
+            name: "",
+            description: "",
+            featured: false,
+            image: undefined,
+          })
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl)
+          }
+          setImageFile(null)
+          setPreviewUrl(null)
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />
@@ -290,19 +344,35 @@ export function CreateProjectDialog({ defaultArea = "all", onCreated }: CreatePr
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="image"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Imagem (opcional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+            <div className="space-y-3">
+              <Label>Imagem do projeto (opcional)</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) {
+                    if (previewUrl) URL.revokeObjectURL(previewUrl)
+                    setImageFile(null)
+                    setPreviewUrl(null)
+                    return
+                  }
+                  if (previewUrl) {
+                    URL.revokeObjectURL(previewUrl)
+                  }
+                  setImageFile(file)
+                  setPreviewUrl(URL.createObjectURL(file))
+                }}
+              />
+              {previewUrl && (
+                <div className="rounded-lg border p-2">
+                  <p className="text-xs text-muted-foreground mb-2">Pré-visualização</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={previewUrl} alt="Pré-visualização" className="w-full h-40 object-cover rounded-md" />
+                </div>
               )}
-            />
+              <p className="text-xs text-muted-foreground">Formatos suportados: JPG, PNG, WEBP. Tamanho máx. 5MB.</p>
+            </div>
 
             <div className="flex items-center justify-between border rounded-lg p-3">
               <div>

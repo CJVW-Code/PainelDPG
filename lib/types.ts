@@ -25,6 +25,7 @@ export interface Project {
   featured?: boolean // Para cards maiores no Bento Grid
   image?: string // Added image field for card backgrounds
   visibility?: ProjectVisibility
+  createdById?: string
 }
 
 export interface Role {

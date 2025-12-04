@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { z } from "zod"
 
 import { createProject, getProjectById, getProjects, getProjectsByArea } from "@/lib/data"
 import type { AreaInteresse } from "@/lib/types"
 import { createProjectSchema } from "@/lib/validations/project"
+import { ensureUserProfile } from "@/lib/auth"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -33,12 +36,24 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const supabase = createRouteHandlerClient({ cookies })
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
+
+    const profile = await ensureUserProfile(user)
     const payload = await request.json()
     const data = createProjectSchema.parse(payload)
 
     const project = await createProject({
       ...data,
       image: data.image || undefined,
+      createdById: profile.id,
     })
 
     return NextResponse.json({ project }, { status: 201 })

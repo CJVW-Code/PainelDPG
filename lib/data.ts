@@ -31,6 +31,7 @@ function mapProject(project: ProjectWithTeam): Project {
     featured: project.featured ?? undefined,
     image: project.image ?? undefined,
     visibility: (project.visibility ?? "PUBLIC").toLowerCase() as ProjectVisibility,
+    createdById: project.createdById ?? undefined,
     team: project.team.map(({ teamMember }) => ({
       id: teamMember.id,
       name: teamMember.name,
@@ -72,6 +73,7 @@ export type CreateProjectInput = {
   visibility: ProjectVisibility
   featured?: boolean
   image?: string
+  createdById: string
 }
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {
@@ -89,6 +91,15 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       featured: input.featured ?? false,
       image: input.image ?? null,
       visibility: input.visibility === "restricted" ? "RESTRICTED" : "PUBLIC",
+      createdById: input.createdById,
+      accessRules: {
+        create: {
+          userId: input.createdById,
+          canView: true,
+          canEdit: true,
+          canManage: true,
+        },
+      },
     },
   })
 

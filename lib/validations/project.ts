@@ -1,5 +1,3 @@
-"use client"
-
 import { z } from "zod"
 
 export const areaValues = ["civel", "criminal", "familia", "administrativo", "tecnologia"] as const
@@ -21,8 +19,7 @@ export const createProjectSchema = z
     image: z
       .string()
       .url("Informe uma URL válida.")
-      .optional()
-      .or(z.literal("").transform(() => undefined)),
+      .optional(),
   })
   .refine((data) => new Date(data.endDate) >= new Date(data.startDate), {
     message: "Data final deve ser maior ou igual à inicial.",

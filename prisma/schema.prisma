@@ -21,6 +21,8 @@ model Project {
   visibility  ProjectVisibility @default(PUBLIC)
   team        ProjectMember[]
   accessRules ProjectAccessRule[]
+  createdBy   User?          @relation("ProjectCreator", fields: [createdById], references: [id])
+  createdById String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }
@@ -32,6 +34,7 @@ model User {
   avatar     String?
   roles      UserRole[]
   permissions ProjectAccessRule[]
+  createdProjects Project[] @relation("ProjectCreator")
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 }
