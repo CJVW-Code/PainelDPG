@@ -1,15 +1,14 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Scale, Gavel, Users, Building2, Cpu, type LucideIcon } from "lucide-react"
+import { Eye, Lightbulb, Gauge, MessageCircle, type LucideIcon } from "lucide-react"
 import type { AreaInfo } from "@/lib/types"
 
 const iconMap: Record<string, LucideIcon> = {
-  Scale,
-  Gavel,
-  Users,
-  Building2,
-  Cpu,
+  Eye,
+  Lightbulb,
+  Gauge,
+  MessageCircle,
 }
 
 interface AreaCardProps {

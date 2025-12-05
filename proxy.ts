@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
+import { createSupabaseMiddlewareClient } from "@/lib/supabase/server-client"
+
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 }
@@ -8,13 +10,12 @@ export const config = {
 export default async function proxy(req: NextRequest) {
   const response = NextResponse.next()
 
-  const isProtectedApi = req.nextUrl.pathname.startsWith("/api/projects") || req.nextUrl.pathname.startsWith("/api/uploads")
+  const isProjectsApi = req.nextUrl.pathname.startsWith("/api/projects")
+  const isUploadsApi = req.nextUrl.pathname.startsWith("/api/uploads")
+  const requiresAuth = (isProjectsApi && req.method !== "GET") || isUploadsApi
 
-  if (isProtectedApi) {
-    const supabase = (await import("@supabase/auth-helpers-nextjs")).createMiddlewareClient({
-      req,
-      res: response,
-    })
+  if (requiresAuth) {
+    const supabase = createSupabaseMiddlewareClient(req, response)
 
     const {
       data: { session },

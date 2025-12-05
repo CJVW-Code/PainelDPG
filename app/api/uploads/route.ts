@@ -1,13 +1,12 @@
 import { Buffer } from "node:buffer"
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { createSupabaseRouteHandlerClient } from "@/lib/supabase/server-client"
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? "projects"
 
 export async function POST(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createSupabaseRouteHandlerClient()
     const {
       data: { user },
       error: authError,
@@ -24,12 +23,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Arquivo inválido." }, { status: 400 })
     }
 
+    const normalizedType =
+      file.type ||
+      (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : file.type || "application/octet-stream")
+
+    if (!normalizedType.startsWith("image/") && normalizedType !== "application/pdf") {
+      return NextResponse.json({ error: "Apenas imagens ou PDFs são permitidos." }, { status: 400 })
+    }
+
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
     const filePath = `${user.id}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`
 
     const { data, error } = await supabase.storage.from(BUCKET).upload(filePath, buffer, {
-      contentType: file.type,
+      contentType: normalizedType,
       upsert: false,
     })
 

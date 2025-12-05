@@ -24,11 +24,6 @@ export function useProjects(area: AreaInteresse | "all" = "all"): UseProjectsRes
         const query = area && area !== "all" ? `?area=${area}` : ""
         const response = await fetch(`/api/projects${query}`, { signal: controller.signal })
 
-        if (response.status === 401) {
-          window.location.href = "/login"
-          return
-        }
-
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))
           throw new Error(payload.error ?? "NÃ£o foi possÃ­vel carregar os projetos.")

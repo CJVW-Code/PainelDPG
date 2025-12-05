@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { z } from "zod"
 
 import { createProject, getProjectById, getProjects, getProjectsByArea } from "@/lib/data"
 import type { AreaInteresse } from "@/lib/types"
 import { createProjectSchema } from "@/lib/validations/project"
 import { ensureUserProfile } from "@/lib/auth"
+import { createSupabaseRouteHandlerClient } from "@/lib/supabase/server-client"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
   const area = searchParams.get("area")
+  const supabase = await createSupabaseRouteHandlerClient()
 
   try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    const visibilityFilter = user ? undefined : "public"
+
     if (id) {
-      const project = await getProjectById(id)
+      const project = await getProjectById(id, visibilityFilter ? { visibility: visibilityFilter } : undefined)
 
       if (!project) {
         return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 })
@@ -25,7 +30,12 @@ export async function GET(request: Request) {
     }
 
     const projects =
-      area && area !== "all" ? await getProjectsByArea(area as AreaInteresse) : await getProjects()
+      area && area !== "all"
+        ? await getProjectsByArea(
+            area as AreaInteresse,
+            visibilityFilter ? { visibility: visibilityFilter } : undefined,
+          )
+        : await getProjects(visibilityFilter ? { visibility: visibilityFilter } : undefined)
 
     return NextResponse.json({ projects })
   } catch (error) {
@@ -36,7 +46,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createSupabaseRouteHandlerClient()
     const {
       data: { user },
       error: authError,
@@ -54,6 +64,7 @@ export async function POST(request: Request) {
       ...data,
       image: data.image || undefined,
       createdById: profile.id,
+      files: data.files ?? [],
     })
 
     return NextResponse.json({ project }, { status: 201 })

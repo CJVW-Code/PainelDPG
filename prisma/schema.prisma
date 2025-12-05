@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 model Project {
-  id          String         @id @default(uuid())
+  id          String              @id @default(uuid()) @db.Uuid
   name        String
   description String
   area        String
@@ -16,85 +16,103 @@ model Project {
   startDate   DateTime
   endDate     DateTime
   priority    String
-  featured    Boolean        @default(false)
+  featured    Boolean             @default(false)
   image       String?
-  visibility  ProjectVisibility @default(PUBLIC)
-  team        ProjectMember[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  visibility  ProjectVisibility   @default(PUBLIC)
+  createdById String?             @db.Uuid
+  createdBy   User?               @relation("ProjectCreator", fields: [createdById], references: [id], onUpdate: NoAction)
   accessRules ProjectAccessRule[]
-  createdBy   User?          @relation("ProjectCreator", fields: [createdById], references: [id])
-  createdById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  team        ProjectMember[]
+  files       ProjectFile[]
+
+  @@index([createdById], map: "idx_project_createdby")
 }
 
 model User {
-  id         String       @id @default(uuid())
-  name       String
-  email      String       @unique
-  avatar     String?
-  roles      UserRole[]
-  permissions ProjectAccessRule[]
-  createdProjects Project[] @relation("ProjectCreator")
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String
+  email           String              @unique
+  avatar          String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  createdProjects Project[]           @relation("ProjectCreator")
+  permissions     ProjectAccessRule[]
+  roles           UserRole[]
 }
 
 model Role {
-  id          String       @id @default(uuid())
-  name        String       @unique
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @unique
   description String?
-  level       Int          @default(0)
-  users       UserRole[]
+  level       Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
   permissions ProjectAccessRule[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  users       UserRole[]
 }
 
 model UserRole {
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId   String
-  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  roleId   String
+  userId     String   @db.Uuid
+  roleId     String   @db.Uuid
   assignedAt DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([userId, roleId])
 }
 
 model ProjectAccessRule {
-  id         String   @id @default(uuid())
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId  String
-  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String?
-  role       Role?    @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  roleId     String?
-  canView    Boolean  @default(true)
-  canEdit    Boolean  @default(false)
-  canManage  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  userId    String?  @db.Uuid
+  roleId    String?  @db.Uuid
+  canView   Boolean  @default(true)
+  canEdit   Boolean  @default(false)
+  canManage Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role      Role?    @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([projectId, userId], map: "idx_projectaccessrule_projectid_userid")
 }
 
 model TeamMember {
-  id        String           @id @default(uuid())
+  id        String          @id @default(uuid()) @db.Uuid
   name      String
   role      String
   avatar    String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   projects  ProjectMember[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
 }
 
 model ProjectMember {
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  teamMember  TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-  teamMemberId String
+  projectId    String     @db.Uuid
+  teamMemberId String     @db.Uuid
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  teamMember   TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([projectId, teamMemberId])
+  @@index([projectId, teamMemberId], map: "idx_projectmember_projectid_teamid")
 }
 
 enum ProjectVisibility {
   PUBLIC
   RESTRICTED
+}
+
+model ProjectFile {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  name      String
+  url       String
+  mimeType  String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([projectId], map: "idx_projectfile_projectid")
 }

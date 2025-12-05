@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import type { User } from "@supabase/supabase-js"
-import { LogOut } from "lucide-react"
+import { LogOut, LogIn } from "lucide-react"
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser-client"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,14 @@ import { Button } from "@/components/ui/button"
 export function UserMenu() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [user, setUser] = useState<User | null>(null)
+  const [loginHref, setLoginHref] = useState("/login")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const redirectTo = encodeURIComponent(window.location.pathname + window.location.search)
+      setLoginHref(`/login?redirectTo=${redirectTo}`)
+    }
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -27,7 +35,20 @@ export function UserMenu() {
     }
   }, [supabase])
 
-  if (!user) return null
+  if (!user) {
+    return (
+      <Button
+        size="sm"
+        className="gap-2"
+        onClick={() => {
+          window.location.href = loginHref
+        }}
+      >
+        <LogIn className="h-4 w-4" />
+        Entrar
+      </Button>
+    )
+  }
 
   return (
     <div className="flex items-center gap-3 rounded-full border px-4 py-2 bg-background/80 backdrop-blur">

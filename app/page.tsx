@@ -4,11 +4,13 @@ import { useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { RadarView } from "@/components/radar/radar-view"
 import { BentoGrid } from "@/components/projetos/bento-grid"
+import { CreateProjectDialog } from "@/components/projetos/create-project-dialog"
 import { ProjectModal } from "@/components/projetos/project-modal"
 import { TimelineView } from "@/components/timeline/timeline-view"
 import { PresentationMode, PresentationModeButton } from "@/components/presentation-mode"
 import { UserMenu } from "@/components/auth/user-menu"
 import { useProjects } from "@/hooks/use-projects"
+import { useCurrentUser } from "@/hooks/use-current-user"
 import type { Project, AreaInteresse } from "@/lib/types"
 
 type View = "radar" | "grid"
@@ -20,11 +22,20 @@ export default function DashboardPage() {
   const [selectedArea, setSelectedArea] = useState<AreaInteresse | "all">("all")
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [presentationMode, setPresentationMode] = useState(false)
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null)
   const { projects, isLoading, error, refetch } = useProjects(selectedArea)
+  const { user: currentUser } = useCurrentUser()
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
+
+  const canEditProjects = useMemo(() => {
+    if (!currentUser?.roles) return false
+    return currentUser.roles.some(
+      (role) => role.name.toLowerCase().includes("coordenador") || role.name.toLowerCase() === "admin" || role.level >= 60,
+    )
+  }, [currentUser])
 
   const handleAreaClick = (area: AreaInteresse | "all") => {
     setSelectedArea(area)
@@ -42,7 +53,7 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="flex justify-end px-6 py-4">
+      <div className="flex justify-end px-4 sm:px-6 py-4">
         <UserMenu />
       </div>
       <AnimatePresence mode="wait">
@@ -66,13 +77,14 @@ export default function DashboardPage() {
                     onViewChange={setGridView}
                     currentView={gridView}
                     onProjectCreated={refetch}
+                    currentUser={currentUser}
                   />
                 )}
               </>
             ) : (
-              <div className="min-h-screen bg-background p-6 md:p-8 lg:p-12">
+              <div className="min-h-screen bg-background p-4 sm:p-6 md:p-8 lg:p-12">
                 <div className="max-w-7xl mx-auto">
-                  <div className="flex items-center gap-4 mb-8">
+                  <div className="flex flex-wrap items-center gap-4 mb-8">
                     <button onClick={handleBack} className="p-2 hover:bg-muted rounded-lg transition-colors">
                       <svg
                         className="w-5 h-5 text-muted-foreground"
@@ -83,12 +95,12 @@ export default function DashboardPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
-                    <div>
+                    <div className="flex-1 min-w-[200px]">
                       <h1 className="text-2xl md:text-3xl font-bold text-foreground">Linha do Tempo</h1>
                       <p className="text-muted-foreground text-sm">Visualização cronológica dos projetos</p>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-2 p-1 bg-muted rounded-lg">
+                    <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-2 p-1 bg-muted rounded-lg">
                       <button
                         onClick={() => setGridView("grid")}
                         className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -118,7 +130,34 @@ export default function DashboardPage() {
       </AnimatePresence>
 
       {/* Project Modal */}
-      <ProjectModal project={selectedProject} onClose={() => setSelectedProjectId(null)} />
+      <ProjectModal
+        project={selectedProject}
+        onClose={() => setSelectedProjectId(null)}
+        canEdit={canEditProjects}
+        onEdit={(project) => {
+          setProjectToEdit(project)
+          setSelectedProjectId(null)
+        }}
+      />
+
+      {projectToEdit && currentUser && (
+        <CreateProjectDialog
+          mode="edit"
+          project={projectToEdit}
+          currentUser={currentUser}
+          hideTrigger
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setProjectToEdit(null)
+            }
+          }}
+          onCreated={() => {
+            setProjectToEdit(null)
+            refetch()
+          }}
+        />
+      )}
 
       {/* Presentation Mode - Now receives filtered projects based on selected area */}
       <AnimatePresence>

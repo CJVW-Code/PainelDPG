@@ -6,7 +6,7 @@ import { ArrowLeft, LayoutGrid, Clock } from "lucide-react"
 import { ProjectCard } from "./project-card"
 import { Filters } from "./filters"
 import { CreateProjectDialog } from "./create-project-dialog"
-import type { Project, AreaInteresse, ProjectStatus } from "@/lib/types"
+import type { Project, AreaInteresse, ProjectStatus, User } from "@/lib/types"
 import { AREAS } from "@/lib/types"
 
 interface BentoGridProps {
@@ -17,6 +17,7 @@ interface BentoGridProps {
   onViewChange: (view: "grid" | "timeline") => void
   currentView: "grid" | "timeline"
   onProjectCreated?: () => void
+  currentUser?: User | null
 }
 
 export function BentoGrid({
@@ -27,6 +28,7 @@ export function BentoGrid({
   onViewChange,
   currentView,
   onProjectCreated,
+  currentUser,
 }: BentoGridProps) {
   const [selectedArea, setSelectedArea] = useState<AreaInteresse | "all">(initialArea)
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | "all">("all")
@@ -42,7 +44,7 @@ export function BentoGrid({
   const areaTitle = selectedArea === "all" ? "Todos os Projetos" : AREAS[selectedArea].name
 
   return (
-    <div className="min-h-screen bg-background p-6 md:p-8 lg:p-12">
+    <div className="min-h-screen bg-background p-4 sm:p-6 md:p-8 lg:p-12">
       {/* Header */}
       <motion.div
         className="max-w-7xl mx-auto mb-8"
@@ -99,6 +101,7 @@ export function BentoGrid({
               onCreated={() => {
                 onProjectCreated?.()
               }}
+              currentUser={currentUser ?? undefined}
             />
           </div>
         </div>

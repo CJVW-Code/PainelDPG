@@ -1,13 +1,30 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Calendar, Users, AlertCircle, CheckCircle2, Clock, Pause, AlertTriangle, HelpCircle } from "lucide-react"
+import {
+  X,
+  Calendar,
+  Users,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Pause,
+  AlertTriangle,
+  HelpCircle,
+  Pencil,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+} from "lucide-react"
 import type { Project } from "@/lib/types"
 import { AREAS, STATUS_INFO } from "@/lib/types"
+import { Button } from "@/components/ui/button"
 
 interface ProjectModalProps {
   project: Project | null
   onClose: () => void
+  canEdit?: boolean
+  onEdit?: (project: Project) => void
 }
 
 const statusIcons = {
@@ -19,7 +36,7 @@ const statusIcons = {
   pendente: AlertCircle,
 }
 
-export function ProjectModal({ project, onClose }: ProjectModalProps) {
+export function ProjectModal({ project, onClose, canEdit, onEdit }: ProjectModalProps) {
   if (!project) return null
 
   const area = AREAS[project.area]
@@ -154,25 +171,76 @@ export function ProjectModal({ project, onClose }: ProjectModalProps) {
 
             {/* Footer */}
             <div className="p-4 border-t border-border bg-muted">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <span
                   className={`text-sm font-medium ${
                     project.priority === "alta"
                       ? "text-destructive"
                       : project.priority === "media"
-                        ? "text-warning"
-                        : "text-muted-foreground"
+                          ? "text-warning"
+                          : "text-muted-foreground"
                   }`}
                 >
                   Prioridade: {project.priority.charAt(0).toUpperCase() + project.priority.slice(1)}
                 </span>
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary-hover transition-colors"
-                >
-                  Fechar
-                </button>
+                <div className="flex items-center gap-2">
+                  {canEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => {
+                        if (project) {
+                          onEdit?.(project)
+                        }
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={onClose} className="bg-primary text-primary-foreground hover:bg-primary-hover">
+                    Fechar
+                  </Button>
+                </div>
               </div>
+
+              {/* Attachments */}
+              {project.files && project.files.length > 0 && (
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Paperclip className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Arquivos</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {project.files.map((file) => {
+                      const isImage = file.mimeType?.startsWith("image/")
+                      return (
+                        <a
+                          key={file.id ?? file.url}
+                          href={file.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between rounded-lg border border-border/60 p-3 hover:bg-muted transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            {isImage ? (
+                              <ImageIcon className="w-4 h-4 text-primary" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-primary" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-card-foreground">{file.name}</p>
+                              <p className="text-xs text-muted-foreground">{file.mimeType}</p>
+                            </div>
+                          </div>
+                          <span className="text-xs text-primary font-medium">Abrir</span>
+                        </a>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </>
