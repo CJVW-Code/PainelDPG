@@ -12,6 +12,9 @@ export async function POST(request: Request) {
       error: authError,
     } = await supabase.auth.getUser()
 
+    console.log("[UPLOAD_API] bucket", BUCKET)
+    console.log("[UPLOAD_API] user", user?.id)
+
     if (authError || !user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
     }
