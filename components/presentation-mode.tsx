@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Play, Pause, ChevronLeft, ChevronRight, X, Maximize2, Users } from "lucide-react"
+import { Play, Pause, ChevronLeft, ChevronRight, X, Maximize2, Users, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
 import type { Project } from "@/lib/types"
 import { AREAS, STATUS_INFO } from "@/lib/types"
@@ -13,41 +13,100 @@ interface PresentationModeProps {
   onClose: () => void
 }
 
+const HERO_SLIDE_DURATION = 6000
+const HERO_SLIDE_TICK = 80
+const HERO_PLACEHOLDER = "/placeholder.svg?height=1080&width=1920&query=office professional"
+type HeroSlide = { url: string; position?: "top" | "center" | "bottom" }
+
 export function PresentationMode({ projects, isActive, onClose }: PresentationModeProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const [progress, setProgress] = useState(0)
+  const [heroIndex, setHeroIndex] = useState(0)
+  const [heroProgress, setHeroProgress] = useState(0)
+  const [isImmersive, setIsImmersive] = useState(false)
 
   const displayProjects = projects
 
   const currentProject = displayProjects[currentIndex]
+  const heroImages = useMemo<HeroSlide[]>(() => {
+    if (!currentProject) return [{ url: HERO_PLACEHOLDER, position: "center" }]
+    const fallbackPosition = currentProject.imagePosition ?? "center"
+    const gallerySources =
+      currentProject.gallery?.filter(Boolean).map((url) => ({ url, position: fallbackPosition })) ?? []
+    const highlightSources =
+      currentProject.files
+        ?.filter((file) => file.category === "destaque")
+        .map((file) => ({
+          url: file.url,
+          position: file.position ?? fallbackPosition,
+        })) ?? []
+    const merged = [...gallerySources, ...highlightSources].filter((item) => !!item.url)
+    if (!merged.length) {
+      merged.push({ url: currentProject.image || HERO_PLACEHOLDER, position: fallbackPosition })
+    }
+    return merged
+  }, [currentProject])
+  const heroImageCount = heroImages.length || 1
+  const safeHeroIndex = Math.min(heroIndex, heroImageCount - 1)
+  const activeHeroImage = heroImages[safeHeroIndex] ?? { url: HERO_PLACEHOLDER, position: "center" }
+  const heroObjectPositionMap: Record<NonNullable<Project["imagePosition"]>, string> = {
+    top: "center top",
+    center: "center center",
+    bottom: "center bottom",
+  }
+  const heroObjectPosition = heroObjectPositionMap[activeHeroImage.position ?? "center"]
+
+  const resetHero = useCallback(() => {
+    setHeroIndex(0)
+    setHeroProgress(0)
+  }, [])
+
+  const handleHeroIndicatorClick = useCallback((index: number) => {
+    setHeroIndex(index)
+    setHeroProgress(0)
+  }, [])
 
   const goToNext = useCallback(() => {
     setCurrentIndex((prev) => (prev + 1) % displayProjects.length)
     setProgress(0)
-  }, [displayProjects.length])
+    resetHero()
+  }, [displayProjects.length, resetHero])
 
   const goToPrev = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + displayProjects.length) % displayProjects.length)
     setProgress(0)
-  }, [displayProjects.length])
+    resetHero()
+  }, [displayProjects.length, resetHero])
 
-  // Auto-advance timer
+  // Hero slideshow timer (Ken Burns + crossfade)
   useEffect(() => {
     if (!isActive || !isPlaying) return
-
     const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          goToNext()
+      setHeroProgress((prev) => {
+        const increment = HERO_SLIDE_TICK / HERO_SLIDE_DURATION
+        const next = prev + increment
+        if (next >= 1) {
+          setHeroIndex((prevIndex) => {
+            if (prevIndex + 1 < heroImageCount) {
+              return prevIndex + 1
+            }
+            goToNext()
+            return 0
+          })
           return 0
         }
-        return prev + 1
+        return next
       })
-    }, 100) // 10 seconds total (100 * 100ms)
-
+    }, HERO_SLIDE_TICK)
     return () => clearInterval(interval)
-  }, [isActive, isPlaying, goToNext])
+  }, [isActive, isPlaying, heroImageCount, goToNext])
+
+  // Update progress bar to reflect hero cycle completion
+  useEffect(() => {
+    const total = heroImageCount || 1
+    setProgress(((safeHeroIndex + heroProgress) / total) * 100)
+  }, [heroImageCount, heroProgress, safeHeroIndex])
 
   // Keyboard navigation
   useEffect(() => {
@@ -70,7 +129,21 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
   useEffect(() => {
     setCurrentIndex(0)
     setProgress(0)
-  }, [projects])
+    resetHero()
+  }, [projects, resetHero])
+
+useEffect(() => {
+  if (!currentProject) return
+  setHeroIndex(0)
+  setHeroProgress(0)
+}, [currentProject])
+
+  useEffect(() => {
+    if (!isActive) {
+      setIsPlaying(true)
+      setIsImmersive(false)
+    }
+  }, [isActive])
 
   if (!isActive || !currentProject) return null
 
@@ -85,16 +158,50 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
       exit={{ opacity: 0 }}
     >
       {/* Background Image */}
-      <div className="absolute inset-0">
-        <Image
-          src={currentProject.image || "/placeholder.svg?height=1080&width=1920&query=office professional"}
-          alt=""
-          fill
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/98 via-slate-900/80 to-slate-900/60" />
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-slate-900" />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${currentProject.id}-${safeHeroIndex}`}
+            className="absolute inset-0"
+            initial={{ opacity: 0, scale: 1.08 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+          >
+            <Image
+              src={activeHeroImage.url}
+              alt={currentProject.name}
+              fill
+              className="object-cover"
+              priority
+              style={{ objectPosition: heroObjectPosition }}
+            />
+          </motion.div>
+        </AnimatePresence>
       </div>
+      <div
+        className={`absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/80 to-slate-900/50 transition-opacity duration-500 ${
+          isImmersive ? "opacity-0" : "opacity-100"
+        }`}
+      />
+
+      {!isImmersive && (
+        <div className="absolute top-6 left-8 z-20 flex items-center gap-2">
+          {heroImages.map((_, index) => (
+            <button
+              key={`${currentProject.id}-hero-${index}`}
+              onClick={() => handleHeroIndicatorClick(index)}
+              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
+                index === safeHeroIndex
+                  ? "bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.6)] w-12"
+                  : "bg-white/40 hover:bg-white/70 w-8"
+              }`}
+              aria-label={`Ver imagem ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="relative z-10 h-1 bg-white/10">
@@ -114,6 +221,7 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
                 onClick={() => {
                   setCurrentIndex(i)
                   setProgress(0)
+                  resetHero()
                 }}
                 className={`w-2 h-2 rounded-full transition-colors ${
                   i === currentIndex ? "bg-primary" : "bg-white/30 hover:bg-white/50"
@@ -127,6 +235,13 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsImmersive((prev) => !prev)}
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+            aria-label={isImmersive ? "Sair do modo imersivo" : "Ativar modo imersivo"}
+          >
+            {isImmersive ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          </button>
           <button
             onClick={() => setIsPlaying((prev) => !prev)}
             className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
@@ -143,7 +258,13 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
       </div>
 
       {/* Content */}
-      <div className="relative z-10 flex-1 flex items-center justify-center px-8 py-12">
+      <motion.div
+        className={`relative z-10 flex-1 flex items-center justify-center px-8 py-12 ${
+          isImmersive ? "pointer-events-none" : ""
+        }`}
+        animate={{ opacity: isImmersive ? 0 : 1, y: isImmersive ? 30 : 0 }}
+        transition={{ duration: 0.4 }}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={currentProject.id}
@@ -241,7 +362,7 @@ export function PresentationMode({ projects, isActive, onClose }: PresentationMo
             </motion.div>
           </motion.div>
         </AnimatePresence>
-      </div>
+      </motion.div>
 
       {/* Navigation */}
       <div className="relative z-10 flex items-center justify-between px-8 py-6">

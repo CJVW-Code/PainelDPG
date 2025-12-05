@@ -21,21 +21,33 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
     return [...projects].sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
   }, [projects])
 
-  // Generate months for timeline
-  const months = useMemo(() => {
-    const allDates = sortedProjects.flatMap((p) => [new Date(p.startDate), new Date(p.endDate)])
-    const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())))
-    const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())))
+  const MONTH_WIDTH = 96
+
+  // Generate months for timeline; baseMonth is the same "start" used for the header
+  const { months, baseMonth } = useMemo(() => {
+    if (!sortedProjects.length) {
+      return { months: [] as Date[], timelineStart: null as Date | null }
+    }
+
+    const startDates = sortedProjects.map((p) => new Date(p.startDate))
+    const endDates = sortedProjects.map((p) => new Date(p.endDate))
+
+    const minStartDate = new Date(Math.min(...startDates.map((d) => d.getTime())))
+    const maxEndDate = new Date(Math.max(...endDates.map((d) => d.getTime())))
+
+    // Visual padding of 2 months before/after; this same "start" will be the base for bar positions
+    const start = new Date(minStartDate.getFullYear(), minStartDate.getMonth() - 2, 1)
+    const end = new Date(maxEndDate.getFullYear(), maxEndDate.getMonth() + 2, 1)
 
     const monthsList: Date[] = []
-    const current = new Date(minDate.getFullYear(), minDate.getMonth(), 1)
+    const current = new Date(start)
 
-    while (current <= maxDate) {
+    while (current <= end) {
       monthsList.push(new Date(current))
       current.setMonth(current.getMonth() + 1)
     }
 
-    return monthsList
+    return { months: monthsList, baseMonth: start }
   }, [sortedProjects])
 
   const handleScroll = () => {
@@ -57,16 +69,22 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
   }
 
   const getProjectPosition = (project: Project) => {
+    if (!baseMonth) {
+      return { start: 0, duration: 0 }
+    }
+
     const startDate = new Date(project.startDate)
     const endDate = new Date(project.endDate)
-    const firstMonth = months[0]
 
     const startMonthDiff =
-      (startDate.getFullYear() - firstMonth.getFullYear()) * 12 + (startDate.getMonth() - firstMonth.getMonth())
-    const duration =
-      (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth()) + 1
+      (startDate.getFullYear() - baseMonth.getFullYear()) * 12 +
+      (startDate.getMonth() - baseMonth.getMonth())
+    const durationMonths =
+      (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+      (endDate.getMonth() - startDate.getMonth()) +
+      1
 
-    return { start: startMonthDiff, duration }
+    return { start: startMonthDiff, duration: durationMonths }
   }
 
   return (
@@ -116,7 +134,13 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
           <div className="space-y-3">
             {sortedProjects.map((project, index) => {
               const area = AREAS[project.area]
-              const status = STATUS_INFO[project.status]
+
+              const today = new Date()
+              today.setHours(0, 0, 0, 0)
+              const isDelayed =
+                project.progress < 100 && new Date(project.endDate).getTime() < today.getTime()
+
+              const status = isDelayed ? STATUS_INFO.atrasado : STATUS_INFO[project.status]
               const { start, duration } = getProjectPosition(project)
 
               return (
@@ -134,24 +158,45 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
                       className="text-left hover:text-primary transition-colors"
                     >
                       <p className="text-sm font-medium text-card-foreground truncate">{project.name}</p>
-                      <p className={`text-xs ${area.color}`}>{area.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(project.startDate).toLocaleDateString("pt-BR")} -{" "}
+                        {new Date(project.endDate).toLocaleDateString("pt-BR")}
+                      </p>
+                      <p className={`text-xs ${area.color}`}>
+                        {area.name}
+                        {isDelayed && " · Atrasado"}
+                      </p>
                     </button>
                   </div>
 
                   {/* Timeline Bar */}
-                  <div className="flex-1 flex items-center relative h-8">
+                  <div className="flex-1 flex items-center relative h-10">
                     {/* Grid lines */}
                     {months.map((_, i) => (
                       <div key={i} className="w-24 shrink-0 h-full border-l border-border/50" />
                     ))}
+
+                    {/* Dates above bar */}
+                    <div
+                      className="absolute -top-4 h-4 flex items-center pointer-events-none px-1"
+                      style={{
+                        left: `${start * MONTH_WIDTH}px`,
+                        width: `${duration * MONTH_WIDTH - 8}px`,
+                      }}
+                    >
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {new Date(project.startDate).toLocaleDateString("pt-BR")} -{" "}
+                        {new Date(project.endDate).toLocaleDateString("pt-BR")}
+                      </span>
+                    </div>
 
                     {/* Project Bar */}
                     <motion.button
                       onClick={() => onProjectClick(project)}
                       className={`absolute h-6 rounded-md ${area.bgColor} border-2 ${area.borderColor} hover:shadow-md transition-shadow cursor-pointer flex items-center px-2`}
                       style={{
-                        left: `${start * 96}px`,
-                        width: `${duration * 96 - 8}px`,
+                        left: `${start * MONTH_WIDTH}px`,
+                        width: `${duration * MONTH_WIDTH - 8}px`,
                       }}
                       initial={{ scaleX: 0, originX: 0 }}
                       animate={{ scaleX: 1 }}

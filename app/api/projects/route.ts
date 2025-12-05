@@ -63,6 +63,7 @@ export async function POST(request: Request) {
     const project = await createProject({
       ...data,
       image: data.image || undefined,
+      imagePosition: data.imagePosition || undefined,
       createdById: profile.id,
       files: data.files ?? [],
     })

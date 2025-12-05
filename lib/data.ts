@@ -73,6 +73,7 @@ type ProjectFileInput = {
   url: string
   mimeType: string
   category?: ProjectFileCategory
+  position?: "top" | "center" | "bottom"
 }
 
 function normalizeFileCategory(category?: string | null): ProjectFileCategory {
@@ -97,13 +98,32 @@ function toDbFileCategory(category?: ProjectFileCategory | null) {
   }
 }
 
-function mapFile(file: { id: string; name: string; url: string; mimeType: string; category: string | null }): ProjectFile {
+function normalizeFilePosition(position?: string | null): "top" | "center" | "bottom" {
+  const value = (position ?? "center").toLowerCase()
+  if (value === "top") return "top"
+  if (value === "bottom") return "bottom"
+  return "center"
+}
+
+function toDbFilePosition(position?: "top" | "center" | "bottom" | null) {
+  return normalizeFilePosition(position ?? undefined)
+}
+
+function mapFile(file: {
+  id: string
+  name: string
+  url: string
+  mimeType: string
+  category: string | null
+  position?: string | null
+}): ProjectFile {
   return {
     id: file.id,
     name: file.name,
     url: file.url,
     mimeType: file.mimeType,
     category: normalizeFileCategory(file.category),
+    position: normalizeFilePosition(file.position ?? null),
   }
 }
 
@@ -191,6 +211,7 @@ function mapProject(project: ProjectWithRelations): Project {
     priority: project.priority as Project["priority"],
     featured: project.featured ?? undefined,
     image: project.image ?? undefined,
+    imagePosition: (project as any).imagePosition ?? undefined,
     visibility: (project.visibility ?? "PUBLIC").toLowerCase() as ProjectVisibility,
     createdById: project.createdById ?? undefined,
     team: project.team.map(({ teamMember }) => ({
@@ -249,6 +270,7 @@ export type CreateProjectInput = {
   visibility: ProjectVisibility
   featured?: boolean
   image?: string
+  imagePosition?: "top" | "center" | "bottom"
   createdById: string
   files?: ProjectFileInput[]
 }
@@ -267,6 +289,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       progress: 0,
       featured: input.featured ?? false,
       image: input.image ?? null,
+      imagePosition: input.imagePosition ?? null,
       visibility: input.visibility === "restricted" ? "RESTRICTED" : "PUBLIC",
       createdById: input.createdById,
       accessRules: {
@@ -284,6 +307,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
               url: file.url,
               mimeType: file.mimeType,
               category: toDbFileCategory(file.category),
+              position: toDbFilePosition(file.position),
             })),
           }
         : undefined,
@@ -304,6 +328,7 @@ export type UpdateProjectInput = {
   visibility: ProjectVisibility
   featured?: boolean
   image?: string
+  imagePosition?: "top" | "center" | "bottom"
   files?: ProjectFileInput[]
 }
 
@@ -322,6 +347,7 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
       visibility: input.visibility === "restricted" ? "RESTRICTED" : "PUBLIC",
       featured: input.featured ?? false,
       image: input.image ?? null,
+      imagePosition: input.imagePosition ?? null,
     },
   })
 
@@ -352,6 +378,7 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
           url: file.url,
           mimeType: file.mimeType,
           category: toDbFileCategory(file.category),
+          position: toDbFilePosition(file.position),
         },
       })
     }
@@ -365,6 +392,7 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
           mimeType: file.mimeType,
           url: file.url,
           category: toDbFileCategory(file.category),
+          position: toDbFilePosition(file.position),
         },
       })
     }

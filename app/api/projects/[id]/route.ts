@@ -8,8 +8,9 @@ import { createSupabaseRouteHandlerClient } from "@/lib/supabase/server-client"
 import { ensureUserProfile } from "@/lib/auth"
 import { canManageProjects } from "@/lib/permissions"
 
-export async function PUT(request: Request, context: { params: { id?: string } }) {
+export async function PUT(request: Request, context: { params: Promise<{ id?: string }> }) {
   try {
+    const { id: paramId } = await context.params
     const supabase = await createSupabaseRouteHandlerClient()
     const {
       data: { user },
@@ -28,7 +29,7 @@ export async function PUT(request: Request, context: { params: { id?: string } }
       return NextResponse.json({ error: "Permissao insuficiente" }, { status: 403 })
     }
 
-    const projectId = context.params?.id ?? new URL(request.url).pathname.split("/").filter(Boolean).pop()
+    const projectId = paramId ?? new URL(request.url).pathname.split("/").filter(Boolean).pop()
 
     if (!projectId) {
       return NextResponse.json({ error: "Projeto nao informado" }, { status: 400 })
@@ -39,6 +40,7 @@ export async function PUT(request: Request, context: { params: { id?: string } }
     const project = await updateProject(projectId, {
       ...data,
       image: data.image || undefined,
+      imagePosition: data.imagePosition || undefined,
       files: data.files ?? [],
     })
 
@@ -52,8 +54,9 @@ export async function PUT(request: Request, context: { params: { id?: string } }
   }
 }
 
-export async function DELETE(request: Request, context: { params: { id?: string } }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id?: string }> }) {
   try {
+    const { id: paramId } = await context.params
     const supabase = await createSupabaseRouteHandlerClient()
     const {
       data: { user },
@@ -72,7 +75,7 @@ export async function DELETE(request: Request, context: { params: { id?: string 
       return NextResponse.json({ error: "Permissao insuficiente" }, { status: 403 })
     }
 
-    const projectId = context.params?.id ?? new URL(request.url).pathname.split("/").filter(Boolean).pop()
+    const projectId = paramId ?? new URL(request.url).pathname.split("/").filter(Boolean).pop()
 
     if (!projectId) {
       return NextResponse.json({ error: "Projeto nao informado" }, { status: 400 })

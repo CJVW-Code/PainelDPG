@@ -73,6 +73,7 @@ export interface Project {
   name: string;
   description: string;
   area: AreaInteresse;
+  gallery?: string[];
   status: ProjectStatus;
   progress: number; // 0-100
   startDate: string;
@@ -81,6 +82,7 @@ export interface Project {
   priority: "baixa" | "media" | "alta";
   featured?: boolean; // Para cards maiores no Bento Grid
   image?: string; // Added image field for card backgrounds
+  imagePosition?: "top" | "center" | "bottom";
   visibility?: ProjectVisibility;
   createdById?: string;
   files?: ProjectFile[];
@@ -120,6 +122,7 @@ export interface ProjectFile {
   url: string;
   mimeType: string;
   category: ProjectFileCategory;
+  position?: "top" | "center" | "bottom";
 }
 
 export interface AreaInfo {

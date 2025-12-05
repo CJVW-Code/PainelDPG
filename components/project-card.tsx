@@ -16,6 +16,12 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
   const status = STATUS_INFO[project.status]
 
   const isFeatured = project.featured
+  const imagePositionClass =
+    project.imagePosition === "top"
+      ? "object-top"
+      : project.imagePosition === "bottom"
+          ? "object-bottom"
+          : "object-center"
 
   return (
     <motion.button
@@ -42,7 +48,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
           src={project.image || "/placeholder.svg?height=400&width=600&query=office work professional"}
           alt=""
           fill
-          className="object-cover"
+          className={`object-cover ${imagePositionClass}`}
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
         {/* Dark gradient overlay for text readability */}

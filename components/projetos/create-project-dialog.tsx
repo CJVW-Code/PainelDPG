@@ -27,13 +27,14 @@ import { Label } from "@/components/ui/label"
 
  type FormValues = CreateProjectSchema
 
- type AttachmentFormItem = {
+type AttachmentFormItem = {
   id?: string
   name: string
   mimeType: string
   url?: string
   file?: File
   category: ProjectFileCategory
+  position?: "top" | "center" | "bottom"
 }
 
 interface CreateProjectDialogProps {
@@ -55,6 +56,7 @@ function projectFileToAttachment(file: ProjectFile): AttachmentFormItem {
     mimeType: file.mimeType,
     url: file.url,
     category: file.category ?? "anexo",
+    position: file.position ?? "center",
   }
 }
 
@@ -107,6 +109,7 @@ export function CreateProjectDialog({
       visibility: isEditMode && project ? project.visibility ?? "public" : "public",
       featured: isEditMode && project ? Boolean(project.featured) : false,
       image: isEditMode && project ? project.image : undefined,
+      imagePosition: isEditMode && project && project.imagePosition ? project.imagePosition : "center",
     }),
     [defaultArea, isEditMode, project],
   )
@@ -231,6 +234,7 @@ export function CreateProjectDialog({
         mimeType,
         file,
         category,
+        position: "center",
       })
     })
     if (incoming.length) {
@@ -245,6 +249,43 @@ export function CreateProjectDialog({
     setAttachments((prev) => prev.filter((item) => item !== target))
   }
 
+  const updateAttachmentPosition = (target: AttachmentFormItem, position: "top" | "center" | "bottom") => {
+    setAttachments((prev) =>
+      prev.map((item) => {
+        if (item !== target) return item
+        return {
+          ...item,
+          position,
+        }
+      }),
+    )
+  }
+
+  const renderPositionSelector = (attachment: AttachmentFormItem) => {
+    if (!attachment.mimeType?.toLowerCase().startsWith("image/")) {
+      return null
+    }
+
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>Enquadramento:</span>
+        <Select
+          value={attachment.position ?? "center"}
+          onValueChange={(value) => updateAttachmentPosition(attachment, value as "top" | "center" | "bottom")}
+        >
+          <SelectTrigger className="h-8 w-[120px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="top">Topo</SelectItem>
+            <SelectItem value="center">Centro</SelectItem>
+            <SelectItem value="bottom">Base</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
   const uploadFileToStorage = async (file: File) => {
     const formData = new FormData()
     formData.append("file", file)
@@ -255,8 +296,16 @@ export function CreateProjectDialog({
     })
 
     if (!uploadResponse.ok) {
-      const payload = await uploadResponse.json().catch(() => ({}))
-      throw new Error(payload.error ?? `Falha ao enviar ${file.name}.`)
+      const payload = await uploadResponse.json().catch(() => ({} as { error?: string }))
+      const message = payload.error ?? `Falha ao enviar ${file.name}.`
+
+      if (uploadResponse.status === 401 || message.toLowerCase().includes("nao autenticado")) {
+        toast.info("Sua sessao expirou. Faca login novamente para continuar.")
+        window.location.href = loginHref
+        throw new Error("Nao autenticado")
+      }
+
+      throw new Error(message)
     }
 
     const { url } = (await uploadResponse.json()) as { url: string }
@@ -280,6 +329,7 @@ export function CreateProjectDialog({
             mimeType: attachment.mimeType || detectMimeType(attachment.file),
             url,
             category: attachment.category,
+            position: attachment.position ?? "center",
           })
         } else if (attachment.url) {
           attachmentPayload.push({
@@ -288,6 +338,7 @@ export function CreateProjectDialog({
             mimeType: attachment.mimeType,
             url: attachment.url,
             category: attachment.category,
+            position: attachment.position ?? "center",
           })
         }
       }
@@ -308,8 +359,16 @@ export function CreateProjectDialog({
       })
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error ?? `Falha ao ${isEditMode ? "atualizar" : "criar"} projeto.`)
+        const payload = await response.json().catch(() => ({} as { error?: string }))
+        const message = payload.error ?? `Falha ao ${isEditMode ? "atualizar" : "criar"} projeto.`
+
+        if (response.status === 401 || message.toLowerCase().includes("nao autenticado")) {
+          toast.info("Sua sessao expirou. Faca login novamente para continuar.")
+          window.location.href = loginHref
+          throw new Error("Nao autenticado")
+        }
+
+        throw new Error(message)
       }
 
       toast.success(isEditMode ? "Projeto atualizado com sucesso!" : "Projeto criado com sucesso!")
@@ -525,6 +584,27 @@ export function CreateProjectDialog({
                     <img src={previewUrl} alt="Pre-visualizacao" className="w-full h-40 object-cover rounded-md" />
                   </div>
                 )}
+                <FormField
+                  control={form.control}
+                  name="imagePosition"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Posicao da imagem</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ?? "center"}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Centralizada" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="top">Topo</SelectItem>
+                          <SelectItem value="center">Centro</SelectItem>
+                          <SelectItem value="bottom">Base</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
                 <p className="text-xs text-muted-foreground">Formatos suportados: JPG, PNG, WEBP. Tamanho max. 5MB.</p>
               </div>
 
@@ -542,23 +622,33 @@ export function CreateProjectDialog({
                 />
                 <p className="text-xs text-muted-foreground">Essa imagem sera usada como plano de fundo na pagina do projeto.</p>
                 {backgroundFiles.length > 0 && (
-                  <div className="rounded-lg border p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <ImageIcon className="h-4 w-4 text-primary" />
-                      <div>
-                        <p className="text-sm font-medium">{backgroundFiles[0].name}</p>
-                        <p className="text-xs text-muted-foreground">{backgroundFiles[0].mimeType}</p>
+                  <div className="space-y-2">
+                    {backgroundFiles.map((attachment, index) => (
+                      <div
+                        key={attachment.id ?? attachment.url ?? `${attachment.name}-background-${index}`}
+                        className="rounded-lg border p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <ImageIcon className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium">{attachment.name}</p>
+                              <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAttachment(attachment)}
+                            aria-label="Remover imagem de fundo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {renderPositionSelector(attachment)}
                       </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeAttachment(backgroundFiles[0])}
-                      aria-label="Remover imagem de fundo"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -582,24 +672,27 @@ export function CreateProjectDialog({
                     {highlightFiles.map((attachment, index) => (
                       <div
                         key={attachment.id ?? attachment.url ?? `${attachment.name}-highlight-${index}`}
-                        className="flex items-center justify-between rounded-lg border p-3"
+                        className="rounded-lg border p-3 space-y-2"
                       >
-                        <div className="flex items-center gap-3 pr-2">
-                          <ImageIcon className="h-4 w-4 text-primary" />
-                          <div>
-                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
-                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 pr-2">
+                            <ImageIcon className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                              <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                            </div>
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAttachment(attachment)}
+                            aria-label={`Remover ${attachment.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeAttachment(attachment)}
-                          aria-label={`Remover ${attachment.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {renderPositionSelector(attachment)}
                       </div>
                     ))}
                   </div>
@@ -625,28 +718,31 @@ export function CreateProjectDialog({
                     {evidenceFiles.map((attachment, index) => (
                       <div
                         key={attachment.id ?? attachment.url ?? `${attachment.name}-evidence-${index}`}
-                        className="flex items-center justify-between rounded-lg border p-3"
+                        className="rounded-lg border p-3 space-y-2"
                       >
-                        <div className="flex items-center gap-3 pr-2">
-                          {attachment.mimeType.startsWith("image/") ? (
-                            <ImageIcon className="h-4 w-4 text-primary" />
-                          ) : (
-                            <FileText className="h-4 w-4 text-primary" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
-                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 pr-2">
+                            {attachment.mimeType.startsWith("image/") ? (
+                              <ImageIcon className="h-4 w-4 text-primary" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-primary" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                              <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                            </div>
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAttachment(attachment)}
+                            aria-label={`Remover ${attachment.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeAttachment(attachment)}
-                          aria-label={`Remover ${attachment.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {renderPositionSelector(attachment)}
                       </div>
                     ))}
                   </div>
@@ -672,28 +768,31 @@ export function CreateProjectDialog({
                     {generalFiles.map((attachment, index) => (
                       <div
                         key={attachment.id ?? attachment.url ?? `${attachment.name}-extra-${index}`}
-                        className="flex items-center justify-between rounded-lg border p-3"
+                        className="rounded-lg border p-3 space-y-2"
                       >
-                        <div className="flex items-center gap-3 pr-2">
-                          {attachment.mimeType.startsWith("image/") ? (
-                            <ImageIcon className="h-4 w-4 text-primary" />
-                          ) : (
-                            <FileText className="h-4 w-4 text-primary" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
-                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 pr-2">
+                            {attachment.mimeType.startsWith("image/") ? (
+                              <ImageIcon className="h-4 w-4 text-primary" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-primary" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                              <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                            </div>
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAttachment(attachment)}
+                            aria-label={`Remover ${attachment.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeAttachment(attachment)}
-                          aria-label={`Remover ${attachment.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {renderPositionSelector(attachment)}
                       </div>
                     ))}
                   </div>

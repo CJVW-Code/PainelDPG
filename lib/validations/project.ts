@@ -17,6 +17,7 @@ export const createProjectSchema = z
     endDate: z.string().min(1, "Informe a data final."),
     visibility: z.enum(visibilityValues),
     featured: z.boolean().optional(),
+    imagePosition: z.enum(["top", "center", "bottom"]).optional(),
     image: z
       .string()
       .url("Informe uma URL válida.")
@@ -29,6 +30,7 @@ export const createProjectSchema = z
           url: z.string().url("Informe uma URL válida."),
           mimeType: z.string().min(1, "Informe o tipo do arquivo."),
           category: z.enum(fileCategoryValues).default("anexo"),
+          position: z.enum(["top", "center", "bottom"]).optional(),
         }),
       )
       .optional(),

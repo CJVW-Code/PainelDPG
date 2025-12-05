@@ -895,12 +895,12 @@ export function ProjectModal({
                                   {new Date(entry.endDate).toLocaleDateString("pt-BR")}
                                 </p>
                               </div>
-                              <div className="flex-1 relative h-8">
+                              <div className="flex-1 relative h-12">
                                 {projectTimelineMonths.map((_, i) => (
                                   <div key={i} className="w-20 shrink-0 h-full border-l border-border/40 inline-block" />
                                 ))}
                                 <div
-                                  className={`absolute h-6 rounded border ${styles.border} ${styles.bg} flex items-center px-2`}
+                                  className={`absolute top-1 h-8 rounded border ${styles.border} ${styles.bg} flex items-center px-2`}
                                   style={{
                                     left: `${start * PROJECT_TIMELINE_MONTH_WIDTH}px`,
                                     width: `${duration * PROJECT_TIMELINE_MONTH_WIDTH - 6}px`,
