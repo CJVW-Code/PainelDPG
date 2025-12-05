@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { RadarView } from "@/components/radar/radar-view"
 import { BentoGrid } from "@/components/projetos/bento-grid"
@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [presentationMode, setPresentationMode] = useState(false)
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null)
+  const [timelineFocusProjectId, setTimelineFocusProjectId] = useState<string | null>(null)
   const { projects, isLoading, error, refetch } = useProjects(selectedArea)
   const { user: currentUser } = useCurrentUser()
   const selectedProject = useMemo(
@@ -50,6 +51,19 @@ export default function DashboardPage() {
   const handleProjectClick = (project: Project) => {
     setSelectedProjectId(project.id)
   }
+
+  const handleOpenProjectTimeline = (project: Project) => {
+    setSelectedProjectId(null)
+    setTimelineFocusProjectId(project.id)
+    setCurrentView("grid")
+    setGridView("timeline")
+  }
+
+  useEffect(() => {
+    if (currentView !== "grid" || gridView !== "timeline") {
+      setTimelineFocusProjectId(null)
+    }
+  }, [currentView, gridView])
 
   return (
     <main className="min-h-screen bg-background">
@@ -120,7 +134,11 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="py-16 text-center text-muted-foreground">Carregando timeline...</div>
                   ) : (
-                    <TimelineView projects={projects} onProjectClick={handleProjectClick} />
+                    <TimelineView
+                      projects={projects}
+                      onProjectClick={handleProjectClick}
+                      focusProjectId={timelineFocusProjectId ?? undefined}
+                    />
                   )}
                 </div>
               </div>
@@ -138,6 +156,9 @@ export default function DashboardPage() {
           setProjectToEdit(project)
           setSelectedProjectId(null)
         }}
+        onProjectUpdated={refetch}
+        currentUser={currentUser}
+        onOpenTimeline={handleOpenProjectTimeline}
       />
 
       {projectToEdit && currentUser && (

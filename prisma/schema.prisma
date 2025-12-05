@@ -26,20 +26,25 @@ model Project {
   accessRules ProjectAccessRule[]
   team        ProjectMember[]
   files       ProjectFile[]
+  tasks       ProjectTask[]
+  comments    ProjectComment[]
+  timeline    ProjectTimelineEntry[]
 
   @@index([createdById], map: "idx_project_createdby")
 }
 
 model User {
-  id              String              @id @default(uuid()) @db.Uuid
-  name            String
-  email           String              @unique
-  avatar          String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  createdProjects Project[]           @relation("ProjectCreator")
-  permissions     ProjectAccessRule[]
-  roles           UserRole[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  name               String
+  email              String              @unique
+  avatar             String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  createdProjects    Project[]           @relation("ProjectCreator")
+  permissions        ProjectAccessRule[]
+  roles              UserRole[]
+  tasksResponsibleFor ProjectTask[]      @relation("TaskResponsible")
+  projectComments    ProjectComment[]    @relation("CommentAuthor")
 }
 
 model Role {
@@ -106,13 +111,85 @@ enum ProjectVisibility {
 }
 
 model ProjectFile {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @db.Uuid
+  id        String              @id @default(uuid()) @db.Uuid
+  projectId String              @db.Uuid
   name      String
   url       String
   mimeType  String
-  createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  category  ProjectFileCategory @default(ANEXO)
+  createdAt DateTime            @default(now())
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([projectId], map: "idx_projectfile_projectid")
+}
+
+model ProjectTask {
+  id            String            @id @default(uuid()) @db.Uuid
+  projectId     String            @db.Uuid
+  title         String
+  description   String?
+  status        ProjectTaskStatus @default(NAO_INICIADA)
+  responsibleId String?           @db.Uuid
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  order         Int               @default(0)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  responsible   User?             @relation("TaskResponsible", fields: [responsibleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  timeline      ProjectTimelineEntry[]
+
+  @@index([projectId, status], map: "idx_projecttask_project_status")
+}
+
+model ProjectComment {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  authorId    String   @db.Uuid
+  content     String
+  attachments Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author      User     @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([projectId], map: "idx_projectcomment_projectid")
+}
+
+model ProjectTimelineEntry {
+  id          String               @id @default(uuid()) @db.Uuid
+  projectId   String               @db.Uuid
+  taskId      String?              @db.Uuid
+  type        ProjectTimelineType  @default(MARCO)
+  label       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  task        ProjectTask?         @relation(fields: [taskId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([projectId], map: "idx_projecttimeline_projectid")
+  @@index([taskId], map: "idx_projecttimeline_taskid")
+}
+
+enum ProjectTaskStatus {
+  NAO_INICIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+}
+
+enum ProjectTimelineType {
+  MARCO
+  TAREFA
+  FASE
+}
+
+enum ProjectFileCategory {
+  BACKGROUND
+  DESTAQUE
+  COMPROVACAO
+  ANEXO
 }

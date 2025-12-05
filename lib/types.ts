@@ -14,11 +14,58 @@ export type AreaInteresse =
 
 export type ProjectVisibility = "public" | "restricted";
 
+export type ProjectFileCategory = "anexo" | "comprovacao" | "destaque" | "background";
+
+export type ProjectTaskStatus = "nao_iniciada" | "em_andamento" | "concluida";
+
 export interface TeamMember {
   id: string;
   name: string;
   role: string;
   avatar?: string;
+}
+
+export interface ProjectTask {
+  id: string;
+  title: string;
+  description?: string;
+  status: ProjectTaskStatus;
+  startDate?: string;
+  dueDate?: string;
+  completedAt?: string;
+  responsible?: Pick<User, "id" | "name" | "email">;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentAttachment {
+  name: string;
+  url: string;
+  mimeType: string;
+}
+
+export interface ProjectComment {
+  id: string;
+  author: Pick<User, "id" | "name" | "email">;
+  content: string;
+  attachments?: CommentAttachment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProjectTimelineType = "marco" | "tarefa" | "fase";
+
+export interface ProjectTimelineEntry {
+  id: string;
+  label: string;
+  description?: string;
+  type: ProjectTimelineType;
+  startDate: string;
+  endDate: string;
+  taskId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Project {
@@ -37,6 +84,9 @@ export interface Project {
   visibility?: ProjectVisibility;
   createdById?: string;
   files?: ProjectFile[];
+  tasks?: ProjectTask[];
+  comments?: ProjectComment[];
+  timeline?: ProjectTimelineEntry[];
 }
 
 export interface Role {
@@ -69,6 +119,7 @@ export interface ProjectFile {
   name: string;
   url: string;
   mimeType: string;
+  category: ProjectFileCategory;
 }
 
 export interface AreaInfo {

@@ -1,0 +1,187 @@
+# Painel DPG
+
+Plataforma web construída com **Next.js 16 + React 19** que centraliza o acompanhamento dos projetos estratégicos da Defensoria. O painel integra autenticação Supabase, controle de acesso por papéis, cadastro de projetos com anexos categorizados e ferramentas de colaboração (checklists, comentários, timeline estilo Gantt).
+
+## Principais recursos
+- **Catálogo público de projetos** com filtros por área, status e modos de visualização (grid/timeline geral).
+- **Fluxo de criação/edição** protegido por autenticação: apenas usuários autorizados (admin/coordenador) podem criar ou alterar projetos. A edição exibe um formulário completo com validação feita via `react-hook-form` + `zod`.
+- **Arquivos organizados por categoria** (`background`, `destaque`, `comprovacao`, `anexo`). O upload vai para o bucket `projects` no Storage do Supabase, obedecendo as políticas RLS.
+- **Checklist do projeto**: tarefas com responsável, datas, status (`nao_iniciada`, `em_andamento`, `concluida`). A barra de progresso do projeto é recalculada conforme o avanço das tarefas.
+- **Timeline tipo Gantt** para cada projeto, além das visões globais por área e geral. Os registros aceitam tipos (`marco`, `tarefa`, `fase`) e intervalo de datas.
+- **Comentários com anexos** (imagens/PDF) e rastreio de autor/data. Apenas autores, donos do projeto ou administradores podem editar/remover.
+- **API REST interna** em `/api/projects/[id]/...` para tarefas, comentários e timeline. Todos os handlers usam `lib/permissions.ts` para garantir o mesmo modelo de autorização aplicado no banco (RLS).
+
+## Tecnologias
+- [Next.js 16](https://nextjs.org/) com App Router e Turbopack no desenvolvimento.
+- [React 19](https://react.dev/) + Tailwind CSS + componentes Radix UI.
+- [Supabase](https://supabase.com/) (Auth, Postgres, Storage) + [Prisma](https://www.prisma.io/).
+- [pnpm](https://pnpm.io/) como gerenciador.
+- Outras libs: `zod`, `react-hook-form`, `framer-motion`, `lucide-react`, `sonner`, `date-fns`, `recharts`.
+
+## Estrutura relevante
+```
+app/
+  api/
+    uploads/route.ts                 # Proxy autenticado para o bucket de arquivos
+    projects/[id]/tasks              # CRUD de tarefas
+    projects/[id]/comments           # CRUD de comentários
+    projects/[id]/timeline           # CRUD de eventos da linha do tempo
+components/
+  projetos/create-project-dialog.tsx # Formulário completo com anexos categorizados
+  projetos/project-modal.tsx         # Modal com checklist, timeline e comentários
+lib/
+  data.ts                           # Mapeamentos de DB -> modelos usados no front
+  permissions.ts                    # Helper central para autorização
+  validations/project.ts            # Schemas Zod
+prisma/
+  schema.prisma                     # Modelo Prisma (ProjectTask, ProjectComment, ProjectTimelineEntry, etc.)
+  migrations/0004_project_extensions
+policies.sql                        # Script com todas as policies RLS customizadas
+```
+
+## Configuração local
+1. **Requisitos**
+   - Node.js 20+
+   - pnpm 9+
+   - Conta Supabase (projeto já configurado com auth/storage)
+
+2. **Instale dependências**
+   ```bash
+   pnpm install
+   ```
+
+3. **Variáveis de ambiente**
+   - Crie `.env.local` (ou copie as existentes) com:
+     ```env
+     DATABASE_URL=postgresql://...
+     DATABASE_POOL_URL=postgresql://...
+     SHADOW_DATABASE_URL=postgresql://...
+     SUPABASE_URL=https://<project>.supabase.co
+     SUPABASE_ANON_KEY=...
+     NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+     NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+     NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=projects
+     ```
+   - Os valores do exemplo são os usados atualmente. Gere novos em um projeto Supabase próprio antes de expor o app publicamente.
+
+4. **Banco / Prisma**
+   - Gerar cliente Prisma: `pnpm prisma generate`
+   - Aplicar migrações no dev: `pnpm prisma migrate dev`
+   - Em produção/Supabase: `pnpm prisma migrate deploy`
+   - Se for partir de um banco já existente e apenas alinhar o histórico de migrações, utilize `pnpm prisma migrate resolve --applied <migration_folder>`.
+
+5. **Policies Supabase**
+   - O arquivo `policies.sql` contém todas as políticas necessárias para as tabelas `Project`, `ProjectTask`, `ProjectComment`, `ProjectTimelineEntry`, `ProjectAccessRule`, `ProjectMember`, `TeamMember`, `User`, `UserRole` e para o bucket de Storage.
+   - Execute o script diretamente no editor SQL do Supabase (ajuste os nomes de roles se tiver usado nomenclaturas diferentes).
+   - Bucket `projects` precisa das seguintes policies mínimas: `projects_public_read` (SELECT público), `projects_creator_upload` (INSERT para admin/coordenador/level >= 0) e `projects_admin_delete` (DELETE exclusivo de admin). Os exemplos estão no final do `policies.sql`.
+
+6. **Executar**
+   ```bash
+   pnpm dev        # Desenvolvimento (http://localhost:3000)
+   pnpm build      # Build de produção
+   pnpm start      # Servir build gerado
+   pnpm lint       # Checagem ESLint (sem warnings)
+   ```
+
+## Modelos e relacionamentos
+`prisma/schema.prisma` inclui:
+- `ProjectFileCategory` enum (`background`, `destaque`, `comprovacao`, `anexo`).
+- `ProjectTask` (status, responsável, início/fim esperado, vínculo com `Project` e `User`).
+- `ProjectComment` (texto, autor, anexos opcionais).
+- `ProjectTimelineEntry` (label, descrição, tipo, datas).
+- Tabelas auxiliares existentes (`ProjectAccessRule`, `ProjectMember`, `Role`, `UserRole`, etc.).
+
+Quando um projeto é recuperado, `lib/data.ts` monta os objetos `Project` com:
+- `files` agrupados por categoria.
+- `tasks`, `comments` e `timeline` ordenados.
+- Permissões derivadas (`canEdit`, `canComment`, `canUpload`).
+
+## APIs internas
+| Método & Rota                                   | Descrição                                                                                                  |
+|-------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| `POST /api/uploads`                             | Upload autenticado para o bucket `projects`. Apenas imagens/PDF são aceitos.                                |
+| `GET /api/projects/[id]/tasks`                  | Lista tarefas do projeto.                                                                                   |
+| `POST /api/projects/[id]/tasks`                 | Cria tarefa (requer permissão de edição).                                                                   |
+| `PUT /api/projects/[id]/tasks/[taskId]`         | Atualiza título, descrição, datas, responsável ou status.                                                   |
+| `DELETE /api/projects/[id]/tasks/[taskId]`      | Remove tarefa.                                                                                              |
+| `GET /api/projects/[id]/comments`               | Lista comentários com anexos.                                                                               |
+| `POST /api/projects/[id]/comments`              | Cria comentário (usuários com acesso ao projeto).                                                           |
+| `PUT /api/projects/[id]/comments/[commentId]`   | Edita somente o autor ou o dono/admin do projeto.                                                           |
+| `DELETE /api/projects/[id]/comments/[commentId]`| Remove comentário (autor/dono/admin).                                                                       |
+| `GET /api/projects/[id]/timeline`               | Lista marcos/tarefas/fases do projeto.                                                                      |
+| `POST /api/projects/[id]/timeline`              | Cria registro na timeline.                                                                                  |
+| `PUT /api/projects/[id]/timeline/[entryId]`     | Atualiza registro existente.                                                                                |
+| `DELETE /api/projects/[id]/timeline/[entryId]`  | Remove registro.                                                                                            |
+
+Todos os handlers usam `requireProjectPermission` de `lib/permissions.ts`, que replica as regras das policies Supabase (autores enxergam sempre, coordenadores/admins editam, convidados conforme `ProjectAccessRule`). Isso mantém o comportamento consistente mesmo se as policies mudarem.
+
+## Fluxo de criação/edição
+1. **Gatilho**
+   - Botão padrão ou elemento custom passado via `trigger`. Usuários não autenticados são redirecionados para `/login?redirectTo=...`.
+2. **Formulário**
+   - Campos básicos (nome, área, descrição, status, prioridade, visibilidade, datas, destaque).
+   - Upload de imagem principal + background + destaques + comprovações + anexos.
+   - Uploads são mantidos em memória (`attachments`) até o submit; arquivos novos são enviados um a um para `/api/uploads` e os URLs são enviados para o backend.
+3. **Envio**
+   - `CreateProjectDialog` monta o payload conforme o schema Zod e chama `POST /api/projects` (ou `PUT` em modo edição). O componente emite `onCreated`/`onOpenChange` para atualizar a lista.
+
+## ProjectModal
+- Mostra dados gerais (área, status, responsáveis, progresso, arquivos).
+- Se `canEdit` estiver true, disponibiliza:
+  - CRUD de tarefas com mudança de status inline.
+  - CRUD da timeline, com seleção do tipo e intervalo.
+  - CRUD de comentários, incluindo anexos enviados via `/api/uploads`.
+- Após qualquer mudança, dispara `onProjectUpdated` para que a lista externa recarregue métricas/dashboard.
+
+## Supabase Storage
+- Bucket: `projects` (público para leitura).
+- Estrutura do caminho: `<auth.uid>/<timestamp>-<nome-normalizado>`.
+- Apenas imagens (`image/*`) e PDFs (`application/pdf`). O backend rejeita outros tipos.
+- Policies sugeridas:
+  ```sql
+  create policy projects_public_read on storage.objects
+  for select using (bucket_id = 'projects');
+
+  create policy projects_creator_upload on storage.objects
+  for insert with check (
+    bucket_id = 'projects'
+    and exists (
+      select 1
+      from public."UserRole" ur
+      join public."Role" r on r.id = ur."roleId"
+      where ur."userId" = auth.uid()
+        and (lower(r.name) in ('admin', 'coordenador') or r.level >= 0)
+    )
+  );
+
+  create policy projects_admin_delete on storage.objects
+  for delete using (
+    bucket_id = 'projects'
+    and exists (
+      select 1
+      from public."UserRole" ur
+      join public."Role" r on r.id = ur."roleId"
+      where ur."userId" = auth.uid()
+        and lower(r.name) = 'admin'
+    )
+  );
+  ```
+
+## Convenções e dicas
+- **Lint obrigatório**: `pnpm lint` deve rodar limpo antes de qualquer deploy.
+- Código em **UTF-8 ASCII** por padrão (evita problemas em ambientes Windows). Strings com acentuação são renderizadas normalmente via React.
+- Utilize `lib/permissions.ts` e `lib/data.ts` para garantir consistência ao adicionar novos recursos.
+- Sempre que criar novas colunas/tabelas no Supabase, atualize:
+  1. `prisma/schema.prisma`
+  2. Geração de migrations (`pnpm prisma migrate dev`)
+  3. Policies correspondentes em `policies.sql`
+  4. Validações/Zod e tipos em `lib/types.ts`
+
+## Teste manual sugerido
+1. Realizar login com um usuário coordenador/admin.
+2. Criar um projeto completo com uploads em todas as categorias.
+3. Adicionar tarefas, timeline entries e comentários (com e sem anexos).
+4. Trocar de usuário sem permissão e validar que apenas visualização fica disponível.
+5. Garantir que `pnpm lint` e `pnpm build` continuam executando sem erros.
+
+Com esses passos você mantém o painel alinhado com a infraestrutura Supabase e garante que todas as features (checklist, timeline, comentários e uploads categorizados) funcionem ponta a ponta.

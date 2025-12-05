@@ -3,7 +3,19 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
-import type { AreaInteresse, Project, ProjectStatus, ProjectVisibility } from "@/lib/types"
+import type {
+  AreaInteresse,
+  Project,
+  ProjectStatus,
+  ProjectVisibility,
+  ProjectTask,
+  ProjectTaskStatus,
+  ProjectComment,
+  CommentAttachment,
+  ProjectTimelineEntry,
+  ProjectFile,
+  ProjectFileCategory,
+} from "@/lib/types"
 
 const PROJECT_WITH_RELATIONS = {
   include: {
@@ -13,6 +25,32 @@ const PROJECT_WITH_RELATIONS = {
       },
     },
     files: true,
+    tasks: {
+      include: {
+        responsible: true,
+      },
+      orderBy: [
+        {
+          order: "asc",
+        },
+        {
+          createdAt: "asc",
+        },
+      ],
+    },
+    comments: {
+      include: {
+        author: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    },
+    timeline: {
+      orderBy: {
+        startDate: "asc",
+      },
+    },
   },
 } satisfies Prisma.ProjectDefaultArgs
 
@@ -34,16 +72,120 @@ type ProjectFileInput = {
   name: string
   url: string
   mimeType: string
+  category?: ProjectFileCategory
+}
+
+function normalizeFileCategory(category?: string | null): ProjectFileCategory {
+  const value = (category ?? "ANEXO").toLowerCase()
+  if (value === "background") return "background"
+  if (value === "destaque") return "destaque"
+  if (value === "comprovacao") return "comprovacao"
+  return "anexo"
+}
+
+function toDbFileCategory(category?: ProjectFileCategory | null) {
+  const normalized = normalizeFileCategory(category ?? undefined)
+  switch (normalized) {
+    case "background":
+      return "BACKGROUND"
+    case "destaque":
+      return "DESTAQUE"
+    case "comprovacao":
+      return "COMPROVACAO"
+    default:
+      return "ANEXO"
+  }
+}
+
+function mapFile(file: { id: string; name: string; url: string; mimeType: string; category: string | null }): ProjectFile {
+  return {
+    id: file.id,
+    name: file.name,
+    url: file.url,
+    mimeType: file.mimeType,
+    category: normalizeFileCategory(file.category),
+  }
+}
+
+function mapTask(task: Prisma.ProjectTaskGetPayload<{ include: { responsible: true } }>): ProjectTask {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description ?? undefined,
+    status: task.status.toLowerCase() as ProjectTaskStatus,
+    startDate: task.startDate ? task.startDate.toISOString() : undefined,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : undefined,
+    completedAt: task.completedAt ? task.completedAt.toISOString() : undefined,
+    responsible: task.responsible
+      ? {
+          id: task.responsible.id,
+          name: task.responsible.name,
+          email: task.responsible.email,
+        }
+      : undefined,
+    order: task.order,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  }
+}
+
+function mapComment(comment: Prisma.ProjectCommentGetPayload<{ include: { author: true } }>): ProjectComment {
+  return {
+    id: comment.id,
+    content: comment.content,
+    attachments: Array.isArray(comment.attachments) ? (comment.attachments as CommentAttachment[]) : undefined,
+    author: {
+      id: comment.author.id,
+      name: comment.author.name,
+      email: comment.author.email,
+    },
+    createdAt: comment.createdAt.toISOString(),
+    updatedAt: comment.updatedAt.toISOString(),
+  }
+}
+
+function mapTimelineEntry(entry: Prisma.ProjectTimelineEntryGetPayload<{}>): ProjectTimelineEntry {
+  return {
+    id: entry.id,
+    label: entry.label,
+    description: entry.description ?? undefined,
+    type: entry.type.toLowerCase() as ProjectTimelineEntry["type"],
+    startDate: entry.startDate.toISOString(),
+    endDate: entry.endDate.toISOString(),
+    taskId: entry.taskId ?? undefined,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  }
 }
 
 function mapProject(project: ProjectWithRelations): Project {
+  const files = project.files?.map((file) => mapFile(file)) ?? []
+  const tasks = project.tasks?.map((task) =>
+    mapTask(
+      task as Prisma.ProjectTaskGetPayload<{
+        include: { responsible: true }
+      }>,
+    ),
+  ) ?? []
+  const comments =
+    project.comments?.map((comment) =>
+      mapComment(
+        comment as Prisma.ProjectCommentGetPayload<{
+          include: { author: true }
+        }>,
+      ),
+    ) ?? []
+  const timeline = project.timeline?.map((entry) => mapTimelineEntry(entry)) ?? []
+  const completedTasks = tasks.filter((task) => task.status === "concluida").length
+  const computedProgress = tasks.length ? Math.round((completedTasks / tasks.length) * 100) : project.progress
+
   return {
     id: project.id,
     name: project.name,
     description: project.description,
     area: project.area as AreaInteresse,
     status: project.status as ProjectStatus,
-    progress: project.progress,
+    progress: computedProgress,
     startDate: project.startDate.toISOString(),
     endDate: project.endDate.toISOString(),
     priority: project.priority as Project["priority"],
@@ -57,12 +199,10 @@ function mapProject(project: ProjectWithRelations): Project {
       role: teamMember.role,
       avatar: teamMember.avatar ?? undefined,
     })),
-    files: project.files?.map((file) => ({
-      id: file.id,
-      name: file.name,
-      url: file.url,
-      mimeType: file.mimeType,
-    })),
+    files,
+    tasks,
+    comments,
+    timeline,
   }
 }
 
@@ -143,6 +283,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
               name: file.name,
               url: file.url,
               mimeType: file.mimeType,
+              category: toDbFileCategory(file.category),
             })),
           }
         : undefined,
@@ -210,6 +351,20 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
           name: file.name,
           url: file.url,
           mimeType: file.mimeType,
+          category: toDbFileCategory(file.category),
+        },
+      })
+    }
+
+    const filesToUpdate = input.files.filter((file) => file.id)
+    for (const file of filesToUpdate) {
+      await prisma.projectFile.update({
+        where: { id: file.id },
+        data: {
+          name: file.name,
+          mimeType: file.mimeType,
+          url: file.url,
+          category: toDbFileCategory(file.category),
         },
       })
     }
@@ -225,6 +380,209 @@ export async function updateProject(id: string, input: UpdateProjectInput): Prom
   }
 
   return mapProject(project)
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await prisma.project.delete({
+    where: { id },
+  })
+}
+
+type CreateTaskInput = {
+  title: string
+  description?: string
+  startDate?: string
+  dueDate?: string
+  status?: ProjectTaskStatus
+  responsibleEmail?: string
+}
+
+type UpdateTaskInput = Partial<CreateTaskInput> & {
+  status?: ProjectTaskStatus
+}
+
+async function findUserIdByEmail(email?: string | null) {
+  if (!email) return null
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return null
+  const user = await prisma.user.findUnique({ where: { email: normalized } })
+  return user?.id ?? null
+}
+
+export async function createProjectTask(projectId: string, input: CreateTaskInput): Promise<ProjectTask> {
+  const order = await prisma.projectTask.count({ where: { projectId } })
+  const responsibleId = await findUserIdByEmail(input.responsibleEmail)
+  const status = (input.status ?? "nao_iniciada").toUpperCase()
+
+  const task = await prisma.projectTask.create({
+    data: {
+      projectId,
+      title: input.title,
+      description: input.description ?? null,
+      status,
+      responsibleId,
+      startDate: input.startDate ? new Date(input.startDate) : null,
+      dueDate: input.dueDate ? new Date(input.dueDate) : null,
+      completedAt: status === "CONCLUIDA" ? new Date() : null,
+      order,
+    },
+    include: { responsible: true },
+  })
+
+  return mapTask(task)
+}
+
+export async function updateProjectTask(taskId: string, input: UpdateTaskInput): Promise<ProjectTask> {
+  const status = input.status ? input.status.toUpperCase() : undefined
+  let responsibleValue: string | null | undefined = undefined
+  if (input.responsibleEmail !== undefined) {
+    responsibleValue = await findUserIdByEmail(input.responsibleEmail)
+  }
+
+  const data: Prisma.ProjectTaskUpdateInput = {}
+
+  if (input.description !== undefined) {
+    data.description = input.description ?? null
+  }
+  if (input.title !== undefined) {
+    data.title = input.title
+  }
+  if (input.startDate !== undefined) {
+    data.startDate = input.startDate ? new Date(input.startDate) : null
+  }
+  if (input.dueDate !== undefined) {
+    data.dueDate = input.dueDate ? new Date(input.dueDate) : null
+  }
+  if (status) {
+    data.status = status
+    data.completedAt = status === "CONCLUIDA" ? new Date() : null
+  }
+
+  if (responsibleValue !== undefined) {
+    data.responsibleId = responsibleValue
+  }
+
+  const task = await prisma.projectTask.update({
+    where: { id: taskId },
+    data,
+    include: { responsible: true },
+  })
+
+  return mapTask(task)
+}
+
+export async function deleteProjectTask(taskId: string): Promise<void> {
+  await prisma.projectTask.delete({ where: { id: taskId } })
+}
+
+export async function getProjectTasks(projectId: string): Promise<ProjectTask[]> {
+  const tasks = await prisma.projectTask.findMany({
+    where: { projectId },
+    include: { responsible: true },
+    orderBy: [
+      { order: "asc" },
+      { createdAt: "asc" },
+    ],
+  })
+  return tasks.map((task) => mapTask(task))
+}
+
+type CommentInput = {
+  content: string
+  attachments?: CommentAttachment[]
+}
+
+export async function createProjectComment(projectId: string, authorId: string, input: CommentInput): Promise<ProjectComment> {
+  const comment = await prisma.projectComment.create({
+    data: {
+      projectId,
+      authorId,
+      content: input.content,
+      attachments: input.attachments ?? [],
+    },
+    include: { author: true },
+  })
+
+  return mapComment(comment)
+}
+
+export async function updateProjectComment(commentId: string, input: CommentInput): Promise<ProjectComment> {
+  const comment = await prisma.projectComment.update({
+    where: { id: commentId },
+    data: {
+      content: input.content,
+      attachments: input.attachments === undefined ? undefined : input.attachments,
+    },
+    include: { author: true },
+  })
+
+  return mapComment(comment)
+}
+
+export async function deleteProjectComment(commentId: string): Promise<void> {
+  await prisma.projectComment.delete({ where: { id: commentId } })
+}
+
+export async function getProjectComments(projectId: string): Promise<ProjectComment[]> {
+  const comments = await prisma.projectComment.findMany({
+    where: { projectId },
+    include: { author: true },
+    orderBy: { createdAt: "desc" },
+  })
+  return comments.map((comment) => mapComment(comment))
+}
+
+type TimelineEntryInput = {
+  label: string
+  description?: string
+  startDate: string
+  endDate: string
+  type: ProjectTimelineEntry["type"]
+  taskId?: string
+}
+
+export async function createTimelineEntry(projectId: string, input: TimelineEntryInput): Promise<ProjectTimelineEntry> {
+  const entry = await prisma.projectTimelineEntry.create({
+    data: {
+      projectId,
+      label: input.label,
+      description: input.description ?? null,
+      startDate: new Date(input.startDate),
+      endDate: new Date(input.endDate),
+      type: input.type.toUpperCase(),
+      taskId: input.taskId ?? null,
+    },
+  })
+
+  return mapTimelineEntry(entry)
+}
+
+export async function updateTimelineEntry(entryId: string, input: Partial<TimelineEntryInput>): Promise<ProjectTimelineEntry> {
+  const entry = await prisma.projectTimelineEntry.update({
+    where: { id: entryId },
+    data: {
+      label: input.label,
+      description: input.description === undefined ? undefined : input.description ?? null,
+      startDate: input.startDate ? new Date(input.startDate) : undefined,
+      endDate: input.endDate ? new Date(input.endDate) : undefined,
+      type: input.type ? input.type.toUpperCase() : undefined,
+      taskId: input.taskId === undefined ? undefined : input.taskId ?? null,
+    },
+  })
+
+  return mapTimelineEntry(entry)
+}
+
+export async function deleteTimelineEntry(entryId: string): Promise<void> {
+  await prisma.projectTimelineEntry.delete({ where: { id: entryId } })
+}
+
+export async function getTimelineEntries(projectId: string): Promise<ProjectTimelineEntry[]> {
+  const entries = await prisma.projectTimelineEntry.findMany({
+    where: { projectId },
+    orderBy: { startDate: "asc" },
+  })
+  return entries.map((entry) => mapTimelineEntry(entry))
 }
 
 export async function getProjectsCountByArea() {

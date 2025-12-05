@@ -15,31 +15,25 @@ import {
   visibilityValues,
   CreateProjectSchema,
 } from "@/lib/validations/project"
-import type { AreaInteresse, Project, User } from "@/lib/types"
+import type { AreaInteresse, Project, ProjectFile, ProjectFileCategory, User } from "@/lib/types"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 
-type FormValues = CreateProjectSchema
+ type FormValues = CreateProjectSchema
 
-type AttachmentFormItem = {
+ type AttachmentFormItem = {
   id?: string
   name: string
   mimeType: string
   url?: string
   file?: File
+  category: ProjectFileCategory
 }
 
 interface CreateProjectDialogProps {
@@ -53,6 +47,24 @@ interface CreateProjectDialogProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
+
+function projectFileToAttachment(file: ProjectFile): AttachmentFormItem {
+  return {
+    id: file.id,
+    name: file.name,
+    mimeType: file.mimeType,
+    url: file.url,
+    category: file.category ?? "anexo",
+  }
+}
+
+const detectMimeType = (file: File) => {
+  if (file.type) return file.type
+  if (file.name.toLowerCase().endsWith(".pdf")) return "application/pdf"
+  return "application/octet-stream"
+}
+
+const isAllowedAttachment = (mimeType: string) => mimeType.startsWith("image/") || mimeType === "application/pdf"
 
 export function CreateProjectDialog({
   defaultArea = "all",
@@ -87,8 +99,7 @@ export function CreateProjectDialog({
       area: isEditMode && project ? project.area : defaultArea !== "all" ? defaultArea : "transparencia",
       status: isEditMode && project ? project.status : "planejado",
       priority: isEditMode && project ? project.priority : "media",
-      startDate:
-        isEditMode && project ? project.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      startDate: isEditMode && project ? project.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
       endDate:
         isEditMode && project
           ? project.endDate.slice(0, 10)
@@ -124,9 +135,14 @@ export function CreateProjectDialog({
       if (previewUrl && imageFile) {
         URL.revokeObjectURL(previewUrl)
       }
-      setPreviewUrl(isEditMode && project && project.image ? project.image : null)
+      setPreviewUrl(isEditMode && project?.image ? project.image : null)
+      setAttachments([])
+      return
     }
-  }, [dialogOpen, imageFile, isEditMode, previewUrl, project])
+    if (isEditMode && project?.files) {
+      setAttachments(project.files.map(projectFileToAttachment))
+    }
+  }, [dialogOpen, imageFile, previewUrl, isEditMode, project])
 
   useEffect(() => {
     return () => {
@@ -136,19 +152,11 @@ export function CreateProjectDialog({
     }
   }, [imageFile, previewUrl])
 
-  useEffect(() => {
-    if (!dialogOpen) {
-      setAttachments([])
-      return
-    }
-    if (isEditMode && project) {
-      setAttachments(project.files ?? [])
-    } else {
-      setAttachments([])
-    }
-  }, [dialogOpen, isEditMode, project])
-
   const selectedArea = form.watch("area")
+  const backgroundFiles = attachments.filter((file) => file.category === "background")
+  const highlightFiles = attachments.filter((file) => file.category === "destaque")
+  const evidenceFiles = attachments.filter((file) => file.category === "comprovacao")
+  const generalFiles = attachments.filter((file) => file.category === "anexo")
 
   const headerSubtitle = useMemo(() => {
     if (isEditMode && project) return `Editando ${project.name}`
@@ -170,7 +178,7 @@ export function CreateProjectDialog({
 
   const handleTriggerClick = () => {
     if (!currentUser) {
-      toast.info(isEditMode ? "Faça login para editar projetos." : "Faça login para criar projetos.")
+      toast.info(isEditMode ? "Faca login para editar projetos." : "Faca login para criar projetos.")
       window.location.href = loginHref
       return
     }
@@ -205,38 +213,36 @@ export function CreateProjectDialog({
     return defaultButton
   }
 
-  const detectMimeType = (file: File) => {
-    if (file.type) return file.type
-    if (file.name.toLowerCase().endsWith(".pdf")) return "application/pdf"
-    return "application/octet-stream"
-  }
-
-  const isAllowedAttachment = (mimeType: string) => {
-    return mimeType.startsWith("image/") || mimeType === "application/pdf"
-  }
-
-  const handleAttachmentSelection = (fileList: FileList | null) => {
+  const handleAttachmentSelection = (
+    fileList: FileList | null,
+    category: ProjectFileCategory,
+    options?: { replace?: boolean },
+  ) => {
     if (!fileList) return
     const incoming: AttachmentFormItem[] = []
     Array.from(fileList).forEach((file) => {
       const mimeType = detectMimeType(file)
       if (!isAllowedAttachment(mimeType)) {
-        toast.error(`Arquivo "${file.name}" não é suportado. Envie imagens ou PDFs.`)
+        toast.error(`Arquivo "${file.name}" nao e suportado. Envie imagens ou PDFs.`)
         return
       }
       incoming.push({
         name: file.name,
         mimeType,
         file,
+        category,
       })
     })
     if (incoming.length) {
-      setAttachments((prev) => [...prev, ...incoming])
+      setAttachments((prev) => {
+        const filtered = options?.replace ? prev.filter((item) => item.category !== category) : prev
+        return [...filtered, ...incoming]
+      })
     }
   }
 
-  const removeAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, idx) => idx !== index))
+  const removeAttachment = (target: AttachmentFormItem) => {
+    setAttachments((prev) => prev.filter((item) => item !== target))
   }
 
   const uploadFileToStorage = async (file: File) => {
@@ -273,6 +279,7 @@ export function CreateProjectDialog({
             name: attachment.name,
             mimeType: attachment.mimeType || detectMimeType(attachment.file),
             url,
+            category: attachment.category,
           })
         } else if (attachment.url) {
           attachmentPayload.push({
@@ -280,6 +287,7 @@ export function CreateProjectDialog({
             name: attachment.name,
             mimeType: attachment.mimeType,
             url: attachment.url,
+            category: attachment.category,
           })
         }
       }
@@ -351,11 +359,11 @@ export function CreateProjectDialog({
                   name="area"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Área</FormLabel>
+                      <FormLabel>Area</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione a área" />
+                            <SelectValue placeholder="Selecione a area" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -377,7 +385,7 @@ export function CreateProjectDialog({
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Descrição</FormLabel>
+                    <FormLabel>Descricao</FormLabel>
                     <FormControl>
                       <Textarea rows={4} placeholder="Descreva o objetivo do projeto" {...field} />
                     </FormControl>
@@ -450,7 +458,7 @@ export function CreateProjectDialog({
                         <SelectContent>
                           {visibilityValues.map((visibility) => (
                             <SelectItem key={visibility} value={visibility}>
-                              {visibility === "public" ? "Público" : "Restrito"}
+                              {visibility === "public" ? "Publico" : "Restrito"}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -467,7 +475,7 @@ export function CreateProjectDialog({
                   name="startDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Início</FormLabel>
+                      <FormLabel>Inicio</FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
                       </FormControl>
@@ -480,7 +488,7 @@ export function CreateProjectDialog({
                   name="endDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Término</FormLabel>
+                      <FormLabel>Termino</FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
                       </FormControl>
@@ -512,64 +520,182 @@ export function CreateProjectDialog({
                 />
                 {previewUrl && (
                   <div className="rounded-lg border p-2">
-                    <p className="text-xs text-muted-foreground mb-2">Pré-visualização</p>
+                    <p className="text-xs text-muted-foreground mb-2">Pre-visualizacao</p>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={previewUrl} alt="Pré-visualização" className="w-full h-40 object-cover rounded-md" />
+                    <img src={previewUrl} alt="Pre-visualizacao" className="w-full h-40 object-cover rounded-md" />
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">Formatos suportados: JPG, PNG, WEBP. Tamanho máx. 5MB.</p>
+                <p className="text-xs text-muted-foreground">Formatos suportados: JPG, PNG, WEBP. Tamanho max. 5MB.</p>
               </div>
 
               <div className="space-y-3">
-                <Label>Arquivos (PDF ou imagens)</Label>
+                <Label>Imagem de fundo do projeto</Label>
                 <Input
                   type="file"
-                  multiple
-                  accept="image/*,.pdf"
+                  accept="image/*"
                   onChange={(event) => {
-                    handleAttachmentSelection(event.target.files)
+                    handleAttachmentSelection(event.target.files, "background", { replace: true })
                     if (event.target.value) {
                       event.target.value = ""
                     }
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Envie documentos em PDF ou imagens de suporte. Cada arquivo deve ter no máximo 10MB.
-                </p>
-                {attachments.length > 0 && (
+                <p className="text-xs text-muted-foreground">Essa imagem sera usada como plano de fundo na pagina do projeto.</p>
+                {backgroundFiles.length > 0 && (
+                  <div className="rounded-lg border p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <ImageIcon className="h-4 w-4 text-primary" />
+                      <div>
+                        <p className="text-sm font-medium">{backgroundFiles[0].name}</p>
+                        <p className="text-xs text-muted-foreground">{backgroundFiles[0].mimeType}</p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeAttachment(backgroundFiles[0])}
+                      aria-label="Remover imagem de fundo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <Label>Imagens de destaque</Label>
+                <Input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(event) => {
+                    handleAttachmentSelection(event.target.files, "destaque")
+                    if (event.target.value) {
+                      event.target.value = ""
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">Utilize imagens que reforcem a apresentacao do projeto.</p>
+                {highlightFiles.length > 0 && (
                   <div className="space-y-2">
-                    {attachments.map((attachment, index) => {
-                      const isImage = attachment.mimeType?.startsWith("image/")
-                      return (
-                        <div
-                          key={attachment.id ?? `${attachment.name}-${index}`}
-                          className="flex items-center justify-between rounded-lg border p-3"
-                        >
-                          <div className="flex items-center gap-3 pr-2">
-                            {isImage ? (
-                              <ImageIcon className="h-4 w-4 text-primary" />
-                            ) : (
-                              <FileText className="h-4 w-4 text-primary" />
-                            )}
-                            <div>
-                              <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {attachment.file ? "Novo arquivo" : "Anexo existente"} • {attachment.mimeType}
-                              </p>
-                            </div>
+                    {highlightFiles.map((attachment, index) => (
+                      <div
+                        key={attachment.id ?? attachment.url ?? `${attachment.name}-highlight-${index}`}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <div className="flex items-center gap-3 pr-2">
+                          <ImageIcon className="h-4 w-4 text-primary" />
+                          <div>
+                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeAttachment(index)}
-                            aria-label={`Remover ${attachment.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                         </div>
-                      )
-                    })}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeAttachment(attachment)}
+                          aria-label={`Remover ${attachment.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <Label>Comprovacoes (PDF ou imagens)</Label>
+                <Input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  onChange={(event) => {
+                    handleAttachmentSelection(event.target.files, "comprovacao")
+                    if (event.target.value) {
+                      event.target.value = ""
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">Envie documentos em PDF ou imagens que comprovem a execucao.</p>
+                {evidenceFiles.length > 0 && (
+                  <div className="space-y-2">
+                    {evidenceFiles.map((attachment, index) => (
+                      <div
+                        key={attachment.id ?? attachment.url ?? `${attachment.name}-evidence-${index}`}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <div className="flex items-center gap-3 pr-2">
+                          {attachment.mimeType.startsWith("image/") ? (
+                            <ImageIcon className="h-4 w-4 text-primary" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-primary" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeAttachment(attachment)}
+                          aria-label={`Remover ${attachment.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <Label>Arquivos adicionais (PDF ou imagens)</Label>
+                <Input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  onChange={(event) => {
+                    handleAttachmentSelection(event.target.files, "anexo")
+                    if (event.target.value) {
+                      event.target.value = ""
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">Arquivos gerais que voce queira anexar ao projeto.</p>
+                {generalFiles.length > 0 && (
+                  <div className="space-y-2">
+                    {generalFiles.map((attachment, index) => (
+                      <div
+                        key={attachment.id ?? attachment.url ?? `${attachment.name}-extra-${index}`}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <div className="flex items-center gap-3 pr-2">
+                          {attachment.mimeType.startsWith("image/") ? (
+                            <ImageIcon className="h-4 w-4 text-primary" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-primary" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium line-clamp-1">{attachment.name}</p>
+                            <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeAttachment(attachment)}
+                          aria-label={`Remover ${attachment.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -577,7 +703,7 @@ export function CreateProjectDialog({
               <div className="flex items-center justify-between border rounded-lg p-3">
                 <div>
                   <p className="font-medium">Destacar no grid</p>
-                  <p className="text-sm text-muted-foreground">O projeto aparecerá com card ampliado.</p>
+                  <p className="text-sm text-muted-foreground">O projeto aparecera com card ampliado.</p>
                 </div>
                 <FormField
                   control={form.control}

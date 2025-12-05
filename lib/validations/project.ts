@@ -4,6 +4,7 @@ export const areaValues = ["transparencia", "inovacao", "eficiencia", "dialogo",
 export const statusValues = ["planejado", "em_andamento", "pausado", "concluido", "atrasado", "pendente"] as const
 export const priorityValues = ["baixa", "media", "alta"] as const
 export const visibilityValues = ["public", "restricted"] as const
+export const fileCategoryValues = ["anexo", "comprovacao", "destaque", "background"] as const
 
 export const createProjectSchema = z
   .object({
@@ -27,6 +28,7 @@ export const createProjectSchema = z
           name: z.string().min(1, "Informe o nome do arquivo."),
           url: z.string().url("Informe uma URL válida."),
           mimeType: z.string().min(1, "Informe o tipo do arquivo."),
+          category: z.enum(fileCategoryValues).default("anexo"),
         }),
       )
       .optional(),

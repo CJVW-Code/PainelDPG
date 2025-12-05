@@ -12,18 +12,15 @@ export async function POST(request: Request) {
       error: authError,
     } = await supabase.auth.getUser()
 
-    console.log("[UPLOAD_API] bucket", BUCKET)
-    console.log("[UPLOAD_API] user", user?.id)
-
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+      return NextResponse.json({ error: "Nao autenticado." }, { status: 401 })
     }
 
     const formData = await request.formData()
     const file = formData.get("file")
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Arquivo inválido." }, { status: 400 })
+      return NextResponse.json({ error: "Arquivo invalido." }, { status: 400 })
     }
 
     const normalizedType =
@@ -31,12 +28,17 @@ export async function POST(request: Request) {
       (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : file.type || "application/octet-stream")
 
     if (!normalizedType.startsWith("image/") && normalizedType !== "application/pdf") {
-      return NextResponse.json({ error: "Apenas imagens ou PDFs são permitidos." }, { status: 400 })
+      return NextResponse.json({ error: "Apenas imagens ou PDFs sao permitidos." }, { status: 400 })
     }
 
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
-    const filePath = `${user.id}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`
+    const sanitizedName = file.name
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w.-]/g, "-")
+      .replace(/-+/g, "-")
+    const filePath = `${user.id}/${Date.now()}-${sanitizedName}`
 
     const { data, error } = await supabase.storage.from(BUCKET).upload(filePath, buffer, {
       contentType: normalizedType,

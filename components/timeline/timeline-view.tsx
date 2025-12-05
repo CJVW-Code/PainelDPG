@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useMemo } from "react"
+import { useRef, useState, useMemo, useEffect } from "react"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react"
 import type { Project } from "@/lib/types"
@@ -9,9 +9,10 @@ import { AREAS, STATUS_INFO } from "@/lib/types"
 interface TimelineViewProps {
   projects: Project[]
   onProjectClick: (project: Project) => void
+  focusProjectId?: string
 }
 
-export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
+export function TimelineView({ projects, onProjectClick, focusProjectId }: TimelineViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -22,6 +23,8 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
   }, [projects])
 
   // Generate months for timeline
+  const MONTH_WIDTH = 96
+
   const months = useMemo(() => {
     const allDates = sortedProjects.flatMap((p) => [new Date(p.startDate), new Date(p.endDate)])
     const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())))
@@ -68,6 +71,22 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
 
     return { start: startMonthDiff, duration }
   }
+
+  useEffect(() => {
+    handleScroll()
+  }, [months])
+
+  useEffect(() => {
+    if (!focusProjectId || !scrollRef.current || !months.length) return
+    const focusProject = sortedProjects.find((project) => project.id === focusProjectId)
+    if (!focusProject) return
+    const startDate = new Date(focusProject.startDate)
+    const firstMonth = months[0]
+    const startMonthDiff =
+      (startDate.getFullYear() - firstMonth.getFullYear()) * 12 + (startDate.getMonth() - firstMonth.getMonth())
+    const target = Math.max(startMonthDiff * MONTH_WIDTH - MONTH_WIDTH * 2, 0)
+    scrollRef.current.scrollTo({ left: target, behavior: "smooth" })
+  }, [focusProjectId, sortedProjects, months])
 
   return (
     <div className="bg-card rounded-2xl border border-border overflow-hidden">
@@ -119,6 +138,8 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
               const status = STATUS_INFO[project.status]
               const { start, duration } = getProjectPosition(project)
 
+              const isFocused = focusProjectId === project.id
+
               return (
                 <motion.div
                   key={project.id}
@@ -148,17 +169,27 @@ export function TimelineView({ projects, onProjectClick }: TimelineViewProps) {
                     {/* Project Bar */}
                     <motion.button
                       onClick={() => onProjectClick(project)}
-                      className={`absolute h-6 rounded-md ${area.bgColor} border-2 ${area.borderColor} hover:shadow-md transition-shadow cursor-pointer flex items-center px-2`}
+                      className={`absolute h-6 rounded-md ${area.bgColor} border-2 ${area.borderColor} hover:shadow-md transition-shadow cursor-pointer flex items-center px-2 overflow-hidden relative ${
+                        isFocused ? "ring-2 ring-primary" : ""
+                      }`}
                       style={{
-                        left: `${start * 96}px`,
-                        width: `${duration * 96 - 8}px`,
+                        left: `${start * MONTH_WIDTH}px`,
+                        width: `${duration * MONTH_WIDTH - 8}px`,
                       }}
                       initial={{ scaleX: 0, originX: 0 }}
                       animate={{ scaleX: 1 }}
                       transition={{ delay: index * 0.05 + 0.2, duration: 0.4 }}
                       whileHover={{ scale: 1.02 }}
                     >
-                      <span className={`text-xs font-medium ${status.color} truncate`}>{project.progress}%</span>
+                      <span
+                        className="absolute inset-y-0 left-0 bg-primary/20"
+                        style={{
+                          width: `${Math.min(Math.max(project.progress, 0), 100)}%`,
+                        }}
+                      />
+                      <span className={`relative text-xs font-medium ${status.color} truncate`}>
+                        {project.progress}%
+                      </span>
                     </motion.button>
                   </div>
                 </motion.div>
